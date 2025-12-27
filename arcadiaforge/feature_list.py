@@ -235,23 +235,10 @@ class FeatureList:
 
     def exists(self) -> bool:
         """
-        Check if features exist in the database or legacy JSON file.
+        Check if features exist in the database.
 
-        Returns True if there are features available.
+        Returns True if there are features in the database.
         """
-        # First check for legacy JSON file (for backward compatibility)
-        json_path = self.project_dir / "feature_list.json"
-        if json_path.exists():
-            try:
-                import json
-                with open(json_path, "r") as f:
-                    data = json.load(f)
-                if len(data) > 0:
-                    return True
-            except Exception:
-                pass
-
-        # Then check database
         try:
             asyncio.get_running_loop()
             # Running event loop - can't use asyncio.run(), just load
@@ -301,20 +288,12 @@ class FeatureList:
         Load features from database (async version).
 
         Use this method when already in an async context.
-        If database is empty but legacy JSON exists, migrates from JSON first.
 
         Returns:
             True if loaded successfully, False otherwise
         """
         try:
             self._features = await self._load_from_db()
-
-            # If database is empty, try to migrate from legacy JSON
-            if not self._features:
-                migrated = await self._migrate_from_json()
-                if migrated:
-                    self._features = await self._load_from_db()
-
             self._loaded = True
             return True
         except Exception:
@@ -324,56 +303,6 @@ class FeatureList:
         self._features = []
         self._loaded = False
         return False
-
-    async def _migrate_from_json(self) -> bool:
-        """
-        Migrate features from legacy JSON file to database.
-
-        Returns:
-            True if migration occurred, False if no JSON or migration failed
-        """
-        import json
-        json_path = self.project_dir / "feature_list.json"
-
-        if not json_path.exists():
-            return False
-
-        try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
-            if not data:
-                return False
-
-            # Convert JSON data to Feature objects and save to database
-            features = []
-            for i, item in enumerate(data):
-                feature = Feature(
-                    index=i,
-                    category=item.get("category", "functional"),
-                    description=item.get("description", ""),
-                    steps=item.get("steps", []),
-                    passes=item.get("passes", False),
-                )
-                features.append(feature)
-
-            # Save to database
-            session_maker = get_session_maker()
-            async with session_maker() as session:
-                for feature in features:
-                    db_feature = DBFeature(
-                        index=feature.index,
-                        category=feature.category,
-                        description=feature.description,
-                        steps=feature.steps,
-                        passes=feature.passes,
-                    )
-                    session.add(db_feature)
-                await session.commit()
-
-            return True
-        except Exception:
-            return False
 
     async def _load_from_db(self) -> list[Feature]:
         """Load features from database."""
