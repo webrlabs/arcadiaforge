@@ -1,0 +1,2642 @@
+<project_specification>
+  <project_name>Conductor</project_name>
+
+  <overview>
+    Build a Claude.ai-style conversational AI interface powered by Microsoft Agent Framework. The application 
+    provides a clean, modern chat interface using intelligent agents for conversation management, artifact 
+    generation, and workflow orchestration. Unlike traditional chatbots, this uses the Agent Framework's 
+    graph-based agent orchestration to handle complex multi-turn conversations, specialized tasks, and 
+    stateful interactions. The UI should closely match claude.ai's design while exposing agent-specific 
+    capabilities like agent templates, multi-agent workflows, and agent versioning.
+  </overview>
+
+  <technology_stack>
+    <api_key>
+      To test with AI Foundry, use gpt-5-mini at this endpoint: https://onlyjus-aichat-resource.services.ai.azure.com/api/projects/onlyjus-aichat
+      The api key is in the .env file in the project directory, do not read the file, variable name: GPT5_MINI_KEY
+    </api_key>
+    <frontend>
+      <framework>React with Vite</framework>
+      <styling>Tailwind CSS (via CDN)</styling>
+      <state_management>React hooks and context</state_management>
+      <routing>React Router for navigation</routing>
+      <markdown>React Markdown for message rendering</markdown>
+      <code_highlighting>Syntax highlighting for code blocks</code_highlighting>
+      <port>Only launch on port {frontend_port}</port>
+    </frontend>
+    <backend>
+      <runtime>Python 3.11+ with FastAPI</runtime>
+      <agent_framework>Microsoft Agent Framework (agent-framework package)</agent_framework>
+      <database>SQLite with sqlite3</database>
+      <api_integration>Azure AI Foundry</api_integration>
+      <streaming>Server-Sent Events for streaming responses</streaming>
+      <orchestration>Agent Framework graph-based workflows</orchestration>
+    </backend>
+    <communication>
+      <api>RESTful endpoints via FastAPI</api>
+      <streaming>SSE for real-time message streaming</streaming>
+      <websockets>Optional WebSocket support for bi-directional communication</websockets>
+      <agent_api>Agent Framework native interfaces</agent_api>
+    </communication>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Python 3.11+ with mamba/conda for environment management
+      - Create environment: mamba create -n agent-chat python=3.11
+      - Install Microsoft Agent Framework: pip install azure-ai-agent-framework
+      - Install core dependencies: fastapi, uvicorn, anthropic, sqlite3
+      - Repository includes .env with ANTHROPIC_API_KEY or AZURE_OPENAI_KEY configured
+      - Frontend dependencies pre-installed via pnpm
+      - Backend code goes in /server directory
+    </environment_setup>
+  </prerequisites>
+
+  <agent_architecture>
+    <core_agents>
+      <conversation_agent>
+        - Primary agent for handling user conversations (master orchestrator)
+        - Intelligently routes requests to specialized agents based on query analysis
+        - Can delegate to workflows for complex multi-step tasks
+        - User can manually override and force specific agent/workflow selection
+        - Maintains conversation context and history across agent transitions
+        - Handles streaming responses from delegated agents
+        - Manages conversation state and memory
+        - Tracks agent routing decisions for observability
+        - Falls back to direct response when no specialized agent needed
+        - Learns from routing patterns to improve future decisions
+      </conversation_agent>
+      
+      <artifact_agent>
+        - Specialized agent for generating code, HTML, SVG artifacts
+        - Detects when to create artifacts vs inline responses
+        - Handles artifact versioning and updates
+        - Validates artifact syntax and structure
+        - Generates artifact metadata
+      </artifact_agent>
+      
+      <search_agent>
+        - Handles conversation and artifact search queries
+        - Implements semantic search across conversations
+        - Provides relevant context from past interactions
+        - Suggests related conversations
+      </search_agent>
+      
+      <analysis_agent>
+        - Analyzes conversation patterns and usage
+        - Generates insights and suggestions
+        - Tracks token usage and costs
+        - Provides conversation summaries
+      </analysis_agent>
+      
+      <orchestrator_agent>
+        - Master agent that coordinates other agents
+        - Implements graph-based workflows for complex tasks
+        - Handles multi-agent collaboration
+        - Manages agent lifecycle and state
+        - Implements retry logic and error handling
+      </orchestrator_agent>
+    </core_agents>
+    
+    <agent_templates>
+      - Code Generation Agent (specialized for programming tasks)
+      - Writing Assistant Agent (specialized for content creation)
+      - Research Agent (specialized for information gathering)
+      - Data Analysis Agent (specialized for data processing)
+      - Creative Agent (specialized for artistic content)
+      - User can create custom agent templates
+      - Templates include system prompts, tools, and workflows
+    </agent_templates>
+    
+    <multi_agent_workflows>
+      - Sequential: Chain agents for step-by-step processing
+      - Parallel: Execute multiple agents simultaneously
+      - Conditional: Route to agents based on input analysis
+      - Iterative: Loop agents until criteria met
+      - Hierarchical: Nested agent coordination
+      - Graph-based: Define custom agent DAGs
+    </multi_agent_workflows>
+  </agent_architecture>
+
+  <core_features>
+    <chat_interface>
+      - Clean, centered chat layout with message bubbles
+      - Streaming message responses with typing indicator
+      - Markdown rendering with proper formatting
+      - Code blocks with syntax highlighting and copy button
+      - LaTeX/math equation rendering
+      - Image upload and display in messages
+      - Multi-turn conversations with context
+      - Message editing and regeneration
+      - Stop generation button during streaming
+      - Input field with auto-resize textarea
+      - Character count and token estimation
+      - Keyboard shortcuts (Enter to send, Shift+Enter for newline)
+      - Agent status indicators (thinking, executing, complete)
+      - Multi-agent collaboration visualization
+    </chat_interface>
+
+    <artifacts>
+      - Artifact detection and rendering in side panel
+      - Code artifact viewer with syntax highlighting
+      - HTML/SVG preview with live rendering
+      - React component preview
+      - Mermaid diagram rendering
+      - Text document artifacts
+      - Artifact editing and re-prompting
+      - Full-screen artifact view
+      - Download artifact content
+      - Artifact versioning and history
+      - Agent attribution for artifacts
+      - Artifact templates from agent library
+    </artifacts>
+
+    <agent_features>
+      - Agent selector (choose which agent handles conversation)
+      - Conversation agent auto-routing with manual override
+      - Force agent selection via dropdown or command
+      - Agent template library (pre-built agent configurations)
+      - Agent marketplace/discovery UI with visual search
+      - Custom agent creation UI with visual builder
+      - Agent workflow designer (visual graph builder)
+      - Agent performance metrics and analytics
+      - Agent versioning and rollback
+      - Agent testing playground with sample inputs
+      - Agent sharing and collaborative editing
+      - Agent import/export (JSON/YAML)
+      - Multi-agent orchestration controls
+      - Agent state inspection and debugging
+      - Tag-based agent filtering (official, community, personal, domain-specific)
+      - Agent rating and review system
+      - Agent usage statistics and popularity metrics
+      - Clone and customize existing agents
+      - Agent permissions and access control
+      - Agent documentation and examples
+    </agent_features>
+
+    <agent_workflow_marketplace>
+      - Visual marketplace for browsing agents and workflows
+      - Search with filters: tags, category, creator, rating, access level
+      - Featured/official agents highlighted with verified badge
+      - Community-created agents with user attribution
+      - Personal/private agents only visible to creator
+      - Team/shared agents visible to organization members
+      - Detailed agent cards with description, capabilities, metrics
+      - Preview agent behavior with sample conversations
+      - One-click agent instantiation and customization
+      - Workflow templates with visual previews
+      - Trending agents and workflows
+      - Recently used agents quick access
+      - Favorites/starred agents
+      - Agent collections and bundles
+      - Suggested agents based on conversation context
+    </agent_workflow_marketplace>
+
+    <tagging_categorization>
+      - Multi-tag support for agents and workflows
+      - Official tags (verified by platform):
+        - "official" - Platform-provided agents
+        - "verified" - Tested and approved
+        - "enterprise" - Enterprise-grade security
+      - Domain tags:
+        - "code", "writing", "research", "data-analysis"
+        - "finance", "hr", "legal", "marketing"
+        - "restricted" - Requires special permissions
+      - User-created custom tags
+      - Tag hierarchies and categories
+      - Auto-tagging based on agent capabilities
+      - Tag-based search and filtering
+      - Tag suggestions during creation
+      - Tag management for admins
+    </tagging_categorization>
+
+    <permissions_access_control>
+      - Role-based access control (RBAC)
+      - User roles: Admin, Power User, Standard User, Guest
+      - Data classification levels: Public, Internal, Confidential, Restricted
+      - Agent access permissions tied to data classification
+      - Workflow execution permissions
+      - Project-level permissions
+      - Conversation-level access control
+      - Data source integration permissions (SharePoint, SQL, etc.)
+      - Permission inheritance and delegation
+      - Audit logs for permission changes
+      - Dynamic permissions based on user attributes
+      - Row-level security for database integrations
+      - Temporary permission grants with expiration
+      - Permission request and approval workflow
+      - Data masking for unauthorized users
+      - Compliance reporting (who accessed what data)
+    </permissions_access_control>
+
+    <mcp_data_integrations>
+      - MCP (Model Context Protocol) as unified integration layer
+      - All data sources exposed as MCP servers
+      - Standardized tool/resource discovery protocol
+      - Agent Framework native MCP support
+      
+      <mcp_architecture>
+        - MCP servers run as separate processes/containers
+        - Agents connect to MCP servers via stdio, SSE, or WebSocket
+        - Each MCP server exposes tools and resources
+        - Platform manages MCP server lifecycle
+        - Permission-aware MCP server access
+        - MCP server marketplace for community/official servers
+      </mcp_architecture>
+
+      <official_mcp_servers>
+        - SharePoint MCP Server:
+          - Tools: search_documents, get_document, list_sites, upload_file
+          - Resources: site://{site-id}/documents, site://{site-id}/libraries
+          - Auth: Microsoft Graph API with delegated permissions
+          - Respects SharePoint-level permissions
+        
+        - SQL Database MCP Server:
+          - Tools: query_database, describe_schema, list_tables
+          - Resources: database://{db-name}/schemas, database://{db-name}/tables
+          - Support: PostgreSQL, MySQL, SQL Server
+          - Row-level security filters applied server-side
+          - Read-only and read-write modes
+          - Natural language to SQL query generation
+        
+        - ServiceNow MCP Server:
+          - Tools: create_ticket, search_kb, get_incident, update_ticket
+          - Resources: servicenow://tickets, servicenow://knowledge-base
+          - Auth: OAuth 2.0 with ServiceNow instance
+        
+        - Filesystem MCP Server:
+          - Tools: read_file, write_file, list_directory, search_files
+          - Resources: file://{path}, directory://{path}
+          - Permission-based directory access
+        
+        - Google Drive MCP Server:
+          - Tools: search_drive, get_file, upload_file, share_file
+          - Resources: drive://{file-id}, drive://folders/{folder-id}
+          - Auth: Google OAuth with drive.readonly scope
+        
+        - Salesforce MCP Server:
+          - Tools: query_crm, create_record, get_opportunity
+          - Resources: salesforce://accounts, salesforce://opportunities
+          - Auth: Salesforce OAuth
+        
+        - Slack MCP Server:
+          - Tools: send_message, search_messages, get_channel_history
+          - Resources: slack://channels, slack://users
+        
+        - GitHub MCP Server:
+          - Tools: search_code, get_repo, create_issue, list_prs
+          - Resources: github://{org}/{repo}
+        
+        - Web Search MCP Server:
+          - Tools: brave_search, fetch_url, extract_content
+          - Resources: web://search-results
+      </official_mcp_servers>
+
+      <custom_mcp_servers>
+        - Platform supports custom MCP server development
+        - MCP server SDK in Python/TypeScript
+        - Server registration and approval workflow
+        - Community-contributed servers in marketplace
+        - Private organization-specific MCP servers
+        - MCP server templates for common patterns
+      </custom_mcp_servers>
+
+      <mcp_features>
+        - Server discovery and registration
+        - Automatic tool/resource enumeration
+        - Connection health monitoring
+        - Server versioning and updates
+        - Permission mapping to MCP servers
+        - Server-side caching and optimization
+        - Rate limiting per server
+        - Error handling and retry logic
+        - Server logs and observability
+        - Development/testing mode for servers
+      </mcp_features>
+
+      <agent_mcp_integration>
+        - Agents configured with allowed MCP servers
+        - Tools automatically available from connected servers
+        - Resources accessible via MCP protocol
+        - Permission checks before server access
+        - Server connections pooled and reused
+        - Multi-server orchestration in workflows
+        - MCP server selection based on query intent
+      </agent_mcp_integration>
+    </mcp_data_integrations>
+
+    <conversation_management>
+      - Create new conversations
+      - Conversation list in sidebar
+      - Rename conversations
+      - Delete conversations
+      - Search conversations by title/content
+      - Pin important conversations
+      - Archive conversations
+      - Conversation folders/organization
+      - Duplicate conversation
+      - Export conversation (JSON, Markdown, PDF)
+      - Conversation timestamps (created, last updated)
+      - Agent attribution per message
+      - Conversation branching with different agents
+      - Conversation replay with different agents
+    </conversation_management>
+
+    <projects>
+      - Create projects to group related conversations
+      - Project knowledge base (upload documents for RAG)
+      - Project-specific agent configurations
+      - Project-level custom instructions
+      - Share projects with team (mock feature)
+      - Project settings and configuration
+      - Move conversations between projects
+      - Project templates with pre-configured agents
+      - Project analytics (usage stats, agent performance)
+    </projects>
+
+    <model_selection>
+      - Model selector dropdown with the following models:
+        - Claude Sonnet 4.5 (claude-sonnet-4-5-20250929) - default
+        - Claude Haiku 4.5 (claude-haiku-4-5-20251001)
+        - Claude Opus 4.1 (claude-opus-4-1-20250805)
+        - Azure OpenAI GPT-4o (gpt-4o)
+        - Azure OpenAI GPT-4o-mini (gpt-4o-mini)
+      - Model capabilities display
+      - Context window indicator
+      - Model-specific pricing info (display only)
+      - Switch models mid-conversation
+      - Model comparison view
+      - Per-agent model assignment
+    </model_selection>
+
+    <custom_instructions>
+      - Global custom instructions
+      - Project-specific custom instructions
+      - Agent-specific system prompts
+      - Custom instruction templates
+      - Preview how instructions affect responses
+      - Agent persona configuration
+    </custom_instructions>
+
+    <settings_preferences>
+      - Theme selection (Light, Dark, Auto)
+      - Font size adjustment
+      - Message density (compact, comfortable, spacious)
+      - Code theme selection
+      - Language preferences
+      - Accessibility options
+      - Keyboard shortcuts reference
+      - Data export options
+      - Privacy settings
+      - API key management (Claude and Azure)
+      - Agent framework configuration
+    </settings_preferences>
+
+    <advanced_features>
+      - Temperature control slider (per agent)
+      - Max tokens adjustment
+      - Top-p (nucleus sampling) control
+      - System prompt override
+      - Thinking/reasoning mode toggle
+      - Multi-modal input (text + images)
+      - Voice input (optional, mock UI)
+      - Response suggestions
+      - Related prompts
+      - Conversation branching
+      - Agent tool integration
+      - Custom agent functions/plugins
+      - Agent observability and telemetry
+    </advanced_features>
+
+    <agent_workflows>
+      - Visual workflow builder (drag-and-drop agents)
+      - Pre-built workflow templates
+      - Conditional logic and branching
+      - Parallel agent execution
+      - Sequential agent chaining
+      - Workflow versioning
+      - Workflow testing and debugging
+      - Workflow analytics and performance
+      - Workflow sharing and import/export
+    </agent_workflows>
+
+    <collaboration>
+      - Share conversation via link (read-only)
+      - Export conversation formats
+      - Conversation templates
+      - Prompt library
+      - Share artifacts
+      - Share agent configurations
+      - Team workspaces (mock UI)
+      - Agent marketplace (template sharing)
+    </collaboration>
+
+    <search_discovery>
+      - Search across all conversations
+      - Filter by project, date, model, agent
+      - Prompt library with categories
+      - Agent template library
+      - Example conversations
+      - Quick actions menu
+      - Command palette (Cmd/Ctrl+K)
+      - Semantic search using embeddings
+    </search_discovery>
+
+    <usage_tracking>
+      - Token usage display per message
+      - Per-agent token consumption
+      - Conversation cost estimation
+      - Daily/monthly usage dashboard
+      - Usage limits and warnings
+      - API quota tracking
+      - Agent performance metrics
+      - Workflow execution statistics
+    </usage_tracking>
+
+    <onboarding>
+      - Welcome screen for new users
+      - Feature tour highlights
+      - Example prompts to get started
+      - Agent framework introduction
+      - Quick tips and best practices
+      - Keyboard shortcuts tutorial
+      - Agent template showcase
+    </onboarding>
+
+    <accessibility>
+      - Full keyboard navigation
+      - Screen reader support
+      - ARIA labels and roles
+      - High contrast mode
+      - Focus management
+      - Reduced motion support
+    </accessibility>
+
+    <responsive_design>
+      - Mobile-first responsive layout
+      - Touch-optimized interface
+      - Collapsible sidebar on mobile
+      - Swipe gestures for navigation
+      - Adaptive artifact display
+      - Progressive Web App (PWA) support
+    </responsive_design>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <users>
+        - id, email, name, avatar_url
+        - role (admin/power_user/standard_user/guest)
+        - department, organization
+        - data_clearance_level (public/internal/confidential/restricted)
+        - created_at, last_login
+        - preferences (JSON: theme, font_size, etc.)
+        - custom_instructions
+        - default_agent_id
+        - is_active, is_verified
+      </users>
+
+      <user_roles>
+        - id, role_name, description
+        - permissions (JSON array of permission strings)
+        - can_create_agents, can_share_agents
+        - can_access_restricted_data
+        - max_api_calls_per_day
+        - created_at, updated_at
+      </user_roles>
+
+      <user_permissions>
+        - id, user_id, permission_type
+        - resource_type (agent/workflow/conversation/project/data_source)
+        - resource_id
+        - access_level (read/write/execute/admin)
+        - granted_by_user_id
+        - granted_at, expires_at
+        - is_active
+      </user_permissions>
+
+      <agents>
+        - id, user_id, name, description, type
+        - system_prompt, model, temperature, max_tokens
+        - tools (JSON array of tool configurations)
+        - data_sources (JSON array of integration configs)
+        - state_schema (JSON: agent state structure)
+        - version, is_active, is_template
+        - created_at, updated_at
+        - parent_agent_id (for versioning)
+        - execution_config (JSON: retry, timeout, etc.)
+        - visibility (private/team/organization/public)
+        - is_official, is_verified
+        - created_by_user_id
+        - data_classification (public/internal/confidential/restricted)
+        - required_permissions (JSON array)
+      </agents>
+
+      <agent_tags>
+        - id, agent_id, tag_name
+        - tag_type (official/domain/custom)
+        - created_at
+      </agent_tags>
+
+      <agent_shares>
+        - id, agent_id, shared_with_user_id
+        - shared_by_user_id
+        - permission_level (read/clone/edit)
+        - shared_at, expires_at
+        - is_active
+      </agent_shares>
+
+      <agent_ratings>
+        - id, agent_id, user_id
+        - rating (1-5), review_text
+        - created_at, updated_at
+      </agent_ratings>
+
+      <agent_templates>
+        - id, name, description, category
+        - agent_config (JSON: complete agent configuration)
+        - is_public, created_by_user_id
+        - usage_count, rating
+        - created_at, updated_at
+      </agent_templates>
+
+      <workflows>
+        - id, user_id, name, description
+        - graph_definition (JSON: agent graph structure)
+        - version, is_active
+        - created_at, updated_at
+        - visibility (private/team/organization/public)
+        - is_official, is_verified
+        - created_by_user_id
+        - data_classification (public/internal/confidential/restricted)
+        - required_permissions (JSON array)
+      </workflows>
+
+      <workflow_tags>
+        - id, workflow_id, tag_name
+        - tag_type (official/domain/custom)
+        - created_at
+      </workflow_tags>
+
+      <workflow_shares>
+        - id, workflow_id, shared_with_user_id
+        - shared_by_user_id
+        - permission_level (read/clone/edit)
+        - shared_at, expires_at
+        - is_active
+      </workflow_shares>
+
+      <workflow_ratings>
+        - id, workflow_id, user_id
+        - rating (1-5), review_text
+        - created_at, updated_at
+      </workflow_ratings>
+
+      <mcp_servers>
+        - id, name, description, type
+        - transport (stdio/sse/websocket)
+        - connection_config (JSON: command, args, env, url)
+        - is_official, is_community, is_private
+        - created_by_user_id, organization_id
+        - version, status (active/inactive/error)
+        - capabilities (JSON: tools, resources, prompts)
+        - auth_config (JSON: auth type, credentials)
+        - data_classification (public/internal/confidential/restricted)
+        - required_permissions (JSON array)
+        - health_check_url, last_health_check
+        - created_at, updated_at
+      </mcp_servers>
+
+      <mcp_server_permissions>
+        - id, server_id, user_id
+        - access_level (read/execute/admin)
+        - granted_by_user_id
+        - granted_at, expires_at
+        - is_active
+      </mcp_server_permissions>
+
+      <agent_mcp_connections>
+        - id, agent_id, server_id
+        - allowed_tools (JSON array: null = all tools)
+        - allowed_resources (JSON array: null = all resources)
+        - configuration (JSON: server-specific settings)
+        - created_at
+      </agent_mcp_connections>
+
+      <mcp_server_logs>
+        - id, server_id, agent_id, user_id
+        - tool_name, resource_uri
+        - request_data (JSON)
+        - response_data (JSON)
+        - execution_time_ms, status
+        - error_message
+        - timestamp
+      </mcp_server_logs>
+
+      <mcp_server_tags>
+        - id, server_id, tag_name
+        - tag_type (official/domain/custom)
+        - created_at
+      </mcp_server_tags>
+
+      <mcp_server_ratings>
+        - id, server_id, user_id
+        - rating (1-5), review_text
+        - created_at, updated_at
+      </mcp_server_ratings>
+
+      <access_logs>
+        - id, user_id, resource_type, resource_id
+        - action (read/write/execute/delete)
+        - data_classification_accessed
+        - timestamp, ip_address
+        - was_granted (boolean)
+        - denial_reason
+      </access_logs>
+
+      <tags>
+        - id, tag_name, tag_type
+        - description, color
+        - is_official, created_by_user_id
+        - usage_count
+        - created_at
+      </tags>
+
+      <projects>
+        - id, user_id, name, description, color
+        - custom_instructions, knowledge_base_path
+        - default_agent_id, default_workflow_id
+        - created_at, updated_at
+        - is_archived, is_pinned
+        - embedding_index_path (for RAG)
+      </projects>
+
+      <conversations>
+        - id, user_id, project_id, title
+        - agent_id, workflow_id, model
+        - created_at, updated_at, last_message_at
+        - is_archived, is_pinned, is_deleted
+        - settings (JSON: temperature, max_tokens, etc.)
+        - token_count, message_count
+        - agent_state (JSON: current agent state)
+      </conversations>
+
+      <messages>
+        - id, conversation_id, role (user/assistant/system/agent)
+        - content, created_at, edited_at
+        - tokens, finish_reason
+        - images (JSON array of image data)
+        - parent_message_id (for branching)
+        - agent_id (which agent generated this)
+        - agent_metadata (JSON: agent execution details)
+        - thinking_process (JSON: agent reasoning steps)
+      </messages>
+
+      <artifacts>
+        - id, message_id, conversation_id, agent_id
+        - type (code/html/svg/react/mermaid/text)
+        - title, identifier, language
+        - content, version
+        - created_at, updated_at
+        - parent_artifact_id (for versioning)
+      </artifacts>
+
+      <agent_executions>
+        - id, conversation_id, message_id, agent_id
+        - execution_start, execution_end, duration_ms
+        - input_tokens, output_tokens, total_cost
+        - status (success/error/timeout)
+        - error_message, stack_trace
+        - agent_state_before, agent_state_after (JSON)
+      </agent_executions>
+
+      <workflow_executions>
+        - id, workflow_id, conversation_id
+        - execution_start, execution_end, duration_ms
+        - agent_executions (JSON array of agent execution IDs)
+        - status, error_message
+        - execution_graph (JSON: actual execution path)
+      </workflow_executions>
+
+      <shared_conversations>
+        - id, conversation_id, share_token
+        - created_at, expires_at, view_count
+        - is_public
+      </shared_conversations>
+
+      <prompt_library>
+        - id, user_id, title, description
+        - prompt_template, category, tags (JSON)
+        - agent_id (recommended agent for this prompt)
+        - is_public, usage_count
+        - created_at, updated_at
+      </prompt_library>
+
+      <conversation_folders>
+        - id, user_id, project_id, name, parent_folder_id
+        - created_at, position
+      </conversation_folders>
+
+      <conversation_folder_items>
+        - id, folder_id, conversation_id
+      </conversation_folder_items>
+
+      <usage_tracking>
+        - id, user_id, conversation_id, message_id
+        - agent_id, model, input_tokens, output_tokens
+        - cost_estimate, created_at
+      </usage_tracking>
+
+      <api_keys>
+        - id, user_id, key_name, api_key_hash
+        - provider (anthropic/azure/openai)
+        - created_at, last_used_at
+        - is_active
+      </api_keys>
+
+      <knowledge_bases>
+        - id, project_id, name, description
+        - document_count, index_path
+        - embedding_model, chunk_size, chunk_overlap
+        - created_at, updated_at
+      </knowledge_bases>
+
+      <knowledge_documents>
+        - id, knowledge_base_id, filename, file_path
+        - content_hash, chunk_count
+        - uploaded_at, indexed_at
+      </knowledge_documents>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <authentication>
+      - POST /api/auth/login
+      - POST /api/auth/logout
+      - GET /api/auth/me
+      - PUT /api/auth/profile
+    </authentication>
+
+    <agents>
+      - GET /api/agents (list user's agents)
+      - POST /api/agents (create new agent)
+      - GET /api/agents/:id
+      - PUT /api/agents/:id
+      - DELETE /api/agents/:id
+      - POST /api/agents/:id/test (test agent with sample input)
+      - POST /api/agents/:id/fork (create new version)
+      - GET /api/agents/:id/versions
+      - GET /api/agents/:id/metrics
+      - POST /api/agents/:id/export
+      - POST /api/agents/import
+      - POST /api/agents/:id/share (share with user/team)
+      - DELETE /api/agents/:id/share/:shareId (revoke access)
+      - GET /api/agents/:id/shares (list who has access)
+      - POST /api/agents/:id/tags (add tags)
+      - DELETE /api/agents/:id/tags/:tagId (remove tag)
+      - POST /api/agents/:id/rate (rate/review agent)
+      - GET /api/agents/:id/ratings
+      - POST /api/agents/:id/clone (clone to personal library)
+      - PUT /api/agents/:id/permissions (update access control)
+    </agents>
+
+    <agent_marketplace>
+      - GET /api/marketplace/agents (browse all accessible agents)
+      - GET /api/marketplace/agents/search?q=query&tags=tag1,tag2&category=...
+      - GET /api/marketplace/agents/official (official/verified agents)
+      - GET /api/marketplace/agents/trending
+      - GET /api/marketplace/agents/featured
+      - GET /api/marketplace/agents/recent
+      - GET /api/marketplace/agents/favorites (user's starred agents)
+      - POST /api/marketplace/agents/:id/favorite
+      - DELETE /api/marketplace/agents/:id/favorite
+      - GET /api/marketplace/agents/recommended (AI-recommended agents)
+    </agent_marketplace>
+
+    <workflow_marketplace>
+      - GET /api/marketplace/workflows (browse all accessible workflows)
+      - GET /api/marketplace/workflows/search?q=query&tags=tag1,tag2
+      - GET /api/marketplace/workflows/official
+      - GET /api/marketplace/workflows/trending
+      - GET /api/marketplace/workflows/featured
+      - POST /api/marketplace/workflows/:id/favorite
+      - DELETE /api/marketplace/workflows/:id/favorite
+    </workflow_marketplace>
+
+    <agent_templates>
+      - GET /api/agent-templates (browse template library)
+      - GET /api/agent-templates/:id
+      - POST /api/agent-templates (create from agent)
+      - POST /api/agent-templates/:id/instantiate
+      - GET /api/agent-templates/categories
+    </agent_templates>
+
+    <workflows>
+      - GET /api/workflows
+      - POST /api/workflows
+      - GET /api/workflows/:id
+      - PUT /api/workflows/:id
+      - DELETE /api/workflows/:id
+      - POST /api/workflows/:id/execute (test workflow)
+      - GET /api/workflows/:id/executions
+      - POST /api/workflows/:id/export
+      - POST /api/workflows/import
+      - POST /api/workflows/:id/share (share with user/team)
+      - DELETE /api/workflows/:id/share/:shareId
+      - GET /api/workflows/:id/shares
+      - POST /api/workflows/:id/tags
+      - DELETE /api/workflows/:id/tags/:tagId
+      - POST /api/workflows/:id/rate
+      - GET /api/workflows/:id/ratings
+      - POST /api/workflows/:id/clone
+      - PUT /api/workflows/:id/permissions
+    </workflows>
+
+    <permissions>
+      - GET /api/permissions/my (current user's permissions)
+      - POST /api/permissions/check (check if user has specific permission)
+      - GET /api/permissions/users/:userId (get user permissions - admin only)
+      - POST /api/permissions/grant (grant permission - admin/resource owner)
+      - POST /api/permissions/revoke
+      - GET /api/permissions/requests (pending permission requests)
+      - POST /api/permissions/request (request access to resource)
+      - PUT /api/permissions/requests/:id/approve
+      - PUT /api/permissions/requests/:id/deny
+      - GET /api/roles (list available roles)
+      - PUT /api/users/:userId/role (assign role - admin only)
+      - GET /api/audit/access-logs (access audit trail)
+    </permissions>
+
+    <tags>
+      - GET /api/tags (all tags)
+      - POST /api/tags (create new tag)
+      - GET /api/tags/:id
+      - PUT /api/tags/:id
+      - DELETE /api/tags/:id
+      - GET /api/tags/official (official tags only)
+      - GET /api/tags/popular (most used tags)
+      - GET /api/tags/search?q=query
+    </tags>
+
+    <mcp_servers>
+      - GET /api/mcp/servers (list accessible MCP servers)
+      - POST /api/mcp/servers (register new MCP server)
+      - GET /api/mcp/servers/:id
+      - PUT /api/mcp/servers/:id
+      - DELETE /api/mcp/servers/:id
+      - POST /api/mcp/servers/:id/connect (test connection)
+      - POST /api/mcp/servers/:id/discover (enumerate tools/resources)
+      - GET /api/mcp/servers/:id/tools (list available tools)
+      - GET /api/mcp/servers/:id/resources (list available resources)
+      - GET /api/mcp/servers/:id/health (health check)
+      - POST /api/mcp/servers/:id/grant-access
+      - DELETE /api/mcp/servers/:id/revoke-access/:userId
+      - GET /api/mcp/servers/:id/permissions (who has access)
+      - GET /api/mcp/servers/:id/logs (execution logs)
+      - POST /api/mcp/servers/:id/tags
+      - DELETE /api/mcp/servers/:id/tags/:tagId
+      - POST /api/mcp/servers/:id/rate
+      - GET /api/mcp/servers/:id/ratings
+      - POST /api/mcp/servers/:id/restart (admin only)
+      - GET /api/mcp/servers/official (official MCP servers)
+      - GET /api/mcp/servers/community (community servers)
+      - GET /api/mcp/servers/search?q=query&tags=...
+      
+      <mcp_marketplace>
+        - GET /api/mcp/marketplace (browse all MCP servers)
+        - GET /api/mcp/marketplace/featured
+        - GET /api/mcp/marketplace/trending
+        - GET /api/mcp/marketplace/categories
+        - POST /api/mcp/marketplace/:id/install (one-click install)
+      </mcp_marketplace>
+      
+      <mcp_execution>
+        - POST /api/mcp/execute/tool (execute MCP server tool)
+        - POST /api/mcp/read/resource (read MCP server resource)
+        - GET /api/mcp/prompts (list available prompts from servers)
+      </mcp_execution>
+      
+      <agent_mcp_connections>
+        - GET /api/agents/:id/mcp-servers (list connected MCP servers)
+        - POST /api/agents/:id/mcp-servers (connect MCP server to agent)
+        - PUT /api/agents/:id/mcp-servers/:serverId (update connection config)
+        - DELETE /api/agents/:id/mcp-servers/:serverId (disconnect)
+        - GET /api/agents/:id/available-tools (all tools from connected servers)
+      </agent_mcp_connections>
+    </mcp_servers>
+
+    <conversations>
+      - GET /api/conversations
+      - POST /api/conversations
+      - GET /api/conversations/:id
+      - PUT /api/conversations/:id
+      - DELETE /api/conversations/:id
+      - POST /api/conversations/:id/duplicate
+      - POST /api/conversations/:id/export
+      - PUT /api/conversations/:id/archive
+      - PUT /api/conversations/:id/pin
+      - POST /api/conversations/:id/branch
+      - PUT /api/conversations/:id/agent (switch agent)
+      - POST /api/conversations/:id/replay (replay with different agent)
+    </conversations>
+
+    <messages>
+      - GET /api/conversations/:id/messages
+      - POST /api/conversations/:id/messages (send message to agent)
+      - PUT /api/messages/:id
+      - DELETE /api/messages/:id
+      - POST /api/messages/:id/regenerate
+      - GET /api/messages/stream (SSE endpoint for streaming)
+      - GET /api/messages/:id/thinking (get agent reasoning)
+    </messages>
+
+    <artifacts>
+      - GET /api/conversations/:id/artifacts
+      - GET /api/artifacts/:id
+      - PUT /api/artifacts/:id
+      - DELETE /api/artifacts/:id
+      - POST /api/artifacts/:id/fork
+      - GET /api/artifacts/:id/versions
+      - GET /api/artifacts/:id/agent (get creating agent info)
+    </artifacts>
+
+    <projects>
+      - GET /api/projects
+      - POST /api/projects
+      - GET /api/projects/:id
+      - PUT /api/projects/:id
+      - DELETE /api/projects/:id
+      - POST /api/projects/:id/knowledge (upload documents)
+      - GET /api/projects/:id/knowledge/documents
+      - DELETE /api/projects/:id/knowledge/:docId
+      - POST /api/projects/:id/knowledge/index (rebuild index)
+      - GET /api/projects/:id/conversations
+      - PUT /api/projects/:id/settings
+    </projects>
+
+    <sharing>
+      - POST /api/conversations/:id/share
+      - GET /api/share/:token
+      - DELETE /api/share/:token
+      - PUT /api/share/:token/settings
+      - POST /api/agents/:id/share
+      - POST /api/workflows/:id/share
+    </sharing>
+
+    <prompts>
+      - GET /api/prompts/library
+      - POST /api/prompts/library
+      - GET /api/prompts/:id
+      - PUT /api/prompts/:id
+      - DELETE /api/prompts/:id
+      - GET /api/prompts/categories
+      - GET /api/prompts/examples
+    </prompts>
+
+    <search>
+      - GET /api/search/conversations?q=query
+      - GET /api/search/messages?q=query
+      - GET /api/search/artifacts?q=query
+      - GET /api/search/prompts?q=query
+      - GET /api/search/agents?q=query
+      - POST /api/search/semantic (semantic search across conversations)
+    </search>
+
+    <folders>
+      - GET /api/folders
+      - POST /api/folders
+      - PUT /api/folders/:id
+      - DELETE /api/folders/:id
+      - POST /api/folders/:id/items
+      - DELETE /api/folders/:id/items/:conversationId
+    </folders>
+
+    <usage>
+      - GET /api/usage/daily
+      - GET /api/usage/monthly
+      - GET /api/usage/by-model
+      - GET /api/usage/by-agent
+      - GET /api/usage/conversations/:id
+      - GET /api/usage/agents/:id
+      - GET /api/usage/workflows/:id
+    </usage>
+
+    <settings>
+      - GET /api/settings
+      - PUT /api/settings
+      - GET /api/settings/custom-instructions
+      - PUT /api/settings/custom-instructions
+      - GET /api/settings/agent-framework
+      - PUT /api/settings/agent-framework
+    </settings>
+
+    <execution>
+      - POST /api/execute/agent (execute agent with input)
+      - POST /api/execute/workflow (execute workflow)
+      - GET /api/execute/:executionId/status
+      - GET /api/execute/:executionId/logs
+      - POST /api/execute/:executionId/cancel
+    </execution>
+  </api_endpoints_summary>
+
+  <agent_framework_integration>
+    <core_concepts>
+      - Declarative agent definitions using YAML/JSON
+      - Graph-based workflow orchestration
+      - State management with persistence
+      - Tool/function integration
+      - Built-in observability and telemetry
+      - Automatic retries and error handling
+      - Agent versioning and lifecycle management
+    </core_concepts>
+
+    <agent_definition_example>
+      ```yaml
+      name: conversation-agent
+      description: Main conversation handler
+      model: claude-sonnet-4-5-20250929
+      temperature: 0.7
+      max_tokens: 4096
+      
+      system_prompt: |
+        You are a helpful AI assistant...
+      
+      tools:
+        - name: search_knowledge_base
+          description: Search project knowledge base
+        - name: create_artifact
+          description: Create code or document artifact
+      
+      state:
+        conversation_history: []
+        user_preferences: {}
+        current_context: null
+      
+      execution:
+        timeout: 30000
+        max_retries: 3
+        retry_delay: 1000
+      ```
+    </agent_definition_example>
+
+    <workflow_definition_example>
+      ```yaml
+      name: research-and-write-workflow
+      description: Multi-agent workflow for research and writing
+      
+      graph:
+        nodes:
+          - id: research_agent
+            agent: research-agent
+            inputs:
+              query: ${user_input}
+          
+          - id: analysis_agent
+            agent: analysis-agent
+            inputs:
+              research_results: ${research_agent.output}
+          
+          - id: writing_agent
+            agent: writing-agent
+            inputs:
+              analysis: ${analysis_agent.output}
+              style: ${user_preferences.writing_style}
+        
+        edges:
+          - from: research_agent
+            to: analysis_agent
+          - from: analysis_agent
+            to: writing_agent
+        
+        entry: research_agent
+        exit: writing_agent
+      ```
+    </workflow_definition_example>
+
+    <implementation_patterns>
+      <simple_agent>
+        - Single agent handles entire conversation
+        - Direct API integration with Claude or Azure OpenAI
+        - Minimal state management
+        - Use for simple Q&A, basic chat
+      </simple_agent>
+
+      <agent_routing>
+        - Conversation agent analyzes query intent
+        - Routes to specialized agent based on classification
+        - User can manually override with agent selector
+        - Routing decision logged for transparency
+        - Context passed seamlessly between agents
+        - Use for intelligent delegation to specialists
+      </agent_routing>
+
+      <multi_agent_orchestration>
+        - Orchestrator routes to specialized agents
+        - Each agent has specific expertise
+        - Agents can call each other
+        - Use for complex, multi-step tasks
+      </multi_agent_orchestration>
+
+      <workflow_pipeline>
+        - Sequential agent execution
+        - Each agent transforms input for next
+        - Stateful progression through stages
+        - Use for document processing, data analysis
+      </workflow_pipeline>
+
+      <reactive_agents>
+        - Agents respond to events/triggers
+        - Parallel execution where possible
+        - Event-driven state updates
+        - Use for monitoring, notifications
+      </reactive_agents>
+
+      <data_integration_agents>
+        - Agents configured with specific data sources
+        - Permission-aware data access
+        - Query generation from natural language
+        - Results formatted and presented to user
+        - Use for database queries, SharePoint search, etc.
+      </data_integration_agents>
+    </implementation_patterns>
+
+    <routing_logic_example>
+      ```python
+      class ConversationAgent:
+          def __init__(self, agent_registry, user_permissions):
+              self.registry = agent_registry
+              self.permissions = user_permissions
+          
+          async def route_query(self, query: str, user_id: str, force_agent: str = None):
+              # Manual override
+              if force_agent:
+                  agent = self.registry.get_agent(force_agent)
+                  if not self.check_permission(user_id, agent):
+                      raise PermissionError(f"No access to agent {force_agent}")
+                  return agent
+              
+              # Intelligent routing based on query analysis
+              query_type = await self.classify_query(query)
+              
+              # Route to appropriate specialist
+              if query_type == "code_generation":
+                  return self.registry.get_agent("code-agent")
+              elif query_type == "data_analysis":
+                  return self.registry.get_agent("analysis-agent")
+              elif query_type == "document_search":
+                  return self.registry.get_agent("search-agent")
+              else:
+                  # Default to general conversation agent
+                  return self
+          
+          def check_permission(self, user_id: str, agent):
+              user_level = self.permissions.get_clearance_level(user_id)
+              required_level = agent.data_classification
+              return user_level >= required_level
+      ```
+    </routing_logic_example>
+
+    <data_integration_example>
+      ```python
+      # Agent with SharePoint integration
+      sharepoint_agent = Agent(
+          name="sharepoint-search-agent",
+          system_prompt="You help users find documents in SharePoint...",
+          tools=[
+              Tool(
+                  name="search_sharepoint",
+                  description="Search across SharePoint sites",
+                  integration="sharepoint",
+                  required_permissions=["sharepoint.read"]
+              )
+          ],
+          data_classification="internal"
+      )
+      
+      # Agent with SQL integration
+      sql_agent = Agent(
+          name="database-query-agent",
+          system_prompt="You help users query databases...",
+          tools=[
+              Tool(
+                  name="execute_sql",
+                  description="Execute SQL queries",
+                  integration="sql-hr-db",
+                  required_permissions=["sql.read"],
+                  safety_checks=["prevent_writes", "row_level_security"]
+              )
+          ],
+          data_classification="confidential"
+      )
+      ```
+    </data_integration_example>
+
+    <state_management>
+      - Agent state persisted to database
+      - State transitions tracked for debugging
+      - State rollback for error recovery
+      - Conversation context in agent state
+      - Project knowledge base in shared state
+    </state_management>
+
+    <observability>
+      - Execution traces for all agent calls
+      - Performance metrics (latency, tokens, cost)
+      - Error tracking and stack traces
+      - Agent decision logging
+      - Workflow execution visualization
+    </observability>
+  </agent_framework_integration>
+
+  <backend_structure>
+    <directory_layout>
+      /server
+        /agents
+          conversation_agent.py
+          artifact_agent.py
+          search_agent.py
+          analysis_agent.py
+          orchestrator.py
+          base_agent.py
+        /workflows
+          research_workflow.py
+          code_generation_workflow.py
+          workflow_engine.py
+        /mcp
+          client.py                    # MCP client implementation
+          server_manager.py            # MCP server lifecycle management
+          registry.py                  # Server registry
+          permissions.py               # Server access control
+          transports/                  # Transport implementations
+            stdio.py
+            sse.py
+            websocket.py
+        /mcp_servers                   # Official MCP servers
+          sharepoint/
+            server.py
+            README.md
+          sql/
+            server.py
+            README.md
+          servicenow/
+            server.py
+          filesystem/
+            server.py
+          google_drive/
+            server.py
+          brave_search/
+            server.py
+          github/
+            server.py
+          slack/
+            server.py
+        /api
+          __init__.py
+          agents.py
+          conversations.py
+          messages.py
+          projects.py
+          workflows.py
+          mcp_servers.py               # MCP server management endpoints
+          permissions.py
+          marketplace.py
+        /core
+          database.py
+          auth.py
+          streaming.py
+          embeddings.py
+        /models
+          agent.py
+          conversation.py
+          message.py
+          workflow.py
+          mcp_server.py
+        main.py
+        config.py
+        requirements.txt
+    </directory_layout>
+
+    <key_dependencies>
+      - fastapi[all] - Web framework
+      - azure-ai-agent-framework - Core agent framework
+      - mcp - Model Context Protocol SDK (client and server)
+      - anthropic - Claude API client
+      - openai - Azure OpenAI client
+      - uvicorn - ASGI server
+      - pydantic - Data validation
+      - sqlalchemy - ORM (optional)
+      - python-multipart - File uploads
+      - python-jose - JWT handling
+      - passlib - Password hashing
+      - sentence-transformers - Embeddings
+      - chromadb or faiss-cpu - Vector storage
+      - aiohttp - Async HTTP client for MCP SSE transport
+      - websockets - WebSocket support for MCP transport
+    </key_dependencies>
+
+    <agent_initialization>
+      ```python
+      from azure.ai.agent import Agent, AgentConfig
+      
+      # Simple agent
+      conversation_agent = Agent(
+          name="conversation-agent",
+          model="claude-sonnet-4-5-20250929",
+          system_prompt="You are a helpful assistant...",
+          tools=[search_tool, artifact_tool]
+      )
+      
+      # From config file
+      agent = Agent.from_config("agents/conversation_agent.yaml")
+      
+      # With custom state
+      agent = Agent(
+          name="stateful-agent",
+          state_schema={"history": list, "context": dict},
+          initial_state={"history": [], "context": {}}
+      )
+      ```
+    </agent_initialization>
+
+    <streaming_implementation>
+      ```python
+      @app.post("/api/messages/stream")
+      async def stream_message(request: MessageRequest):
+          async def generate():
+              async for chunk in agent.stream(request.message):
+                  yield f"data: {json.dumps(chunk)}
+
+"
+          
+          return StreamingResponse(
+              generate(),
+              media_type="text/event-stream"
+          )
+      ```
+    </streaming_implementation>
+  </backend_structure>
+
+  <ui_layout>
+    <main_structure>
+      - Three-column layout: sidebar (conversations), main (chat), panel (artifacts/agents)
+      - Collapsible sidebar with resize handle
+      - Responsive breakpoints: mobile (single column), tablet (two column), desktop (three column)
+      - Persistent header with project/agent selector
+      - Bottom input area with send button and options
+      - Agent status bar showing active agent and workflow
+    </main_structure>
+
+    <sidebar_left>
+      - New chat button (prominent)
+      - Project selector dropdown
+      - Active agent indicator
+      - Search conversations input
+      - Conversations list (grouped by date: Today, Yesterday, Previous 7 days, etc.)
+      - Folder tree view (collapsible)
+      - Agent library button
+      - Workflow library button
+      - Settings gear icon at bottom
+      - User profile at bottom
+    </sidebar_left>
+
+    <main_chat_area>
+      - Conversation title (editable inline)
+      - Agent selector badge with agent name and type
+      - Workflow indicator (if using workflow)
+      - Message history (scrollable)
+      - Agent status indicators (thinking, executing tool, waiting)
+      - Multi-agent conversation visualization
+      - Welcome screen for new conversations
+      - Suggested prompts (empty state)
+      - Input area with formatting toolbar
+      - Attachment button for images/documents
+      - Agent selector dropdown in input area
+      - Send button with loading state
+      - Stop generation button
+    </main_chat_area>
+
+    <right_panel>
+      - Tabbed interface: Artifacts / Agent Info / Workflow
+      
+      <artifacts_tab>
+        - Artifact header with title and type badge
+        - Agent attribution badge
+        - Code editor or preview pane
+        - Tabs for multiple artifacts
+        - Full-screen toggle
+        - Download button
+        - Edit/Re-prompt button
+        - Version selector
+      </artifacts_tab>
+
+      <agent_info_tab>
+        - Current agent details
+        - Agent configuration display
+        - Agent state inspector
+        - Agent performance metrics
+        - Switch agent button
+        - Agent tools list
+        - Recent executions
+      </agent_info_tab>
+
+      <workflow_tab>
+        - Active workflow visualization
+        - Workflow execution graph
+        - Current step indicator
+        - Agent execution timeline
+        - Workflow state inspector
+        - Edit workflow button
+      </workflow_tab>
+    </right_panel>
+
+    <modals_overlays>
+      - Settings modal (tabbed interface)
+      - Agent builder modal (create/edit agents)
+      - Workflow designer modal (visual graph editor)
+      - Agent marketplace modal (browse/search agents)
+      - Workflow marketplace modal (browse/search workflows)
+      - Agent template library modal
+      - Share conversation modal
+      - Share agent/workflow modal with permissions
+      - Export options modal
+      - Project settings modal
+      - Prompt library modal
+      - Command palette overlay (Cmd+K)
+      - Keyboard shortcuts reference
+      - Agent execution logs viewer
+      - Permissions management modal
+      - Data integration setup modal
+      - Access request modal
+      - User role management (admin)
+      - Tag editor modal
+      - Agent/workflow rating modal
+      - Data source selector for agents
+    </modals_overlays>
+
+    <marketplace_ui>
+      - Grid/list view toggle for agents and workflows
+      - Search bar with real-time filtering
+      - Tag filter chips (multi-select)
+      - Category dropdown filter
+      - Sort by: Popular, Recent, Rating, Name
+      - Filter by access level: Public, Team, Private
+      - Official/verified badge display
+      - Agent cards with:
+        - Name, description, creator
+        - Tags (color-coded)
+        - Rating (stars)
+        - Usage count
+        - "Try It" button for preview
+        - "Clone" button for personalization
+        - "Add to Favorites" star icon
+      - Workflow cards with:
+        - Visual graph preview (miniature)
+        - Execution count
+        - Average execution time
+        - Success rate percentage
+      - Detailed view modal on card click
+      - Quick actions menu (clone, share, rate)
+      - Recently used section
+      - Suggested agents based on context
+    </marketplace_ui>
+
+    <permissions_ui>
+      - User role badge display
+      - Data clearance level indicator
+      - Permission request button on restricted resources
+      - Pending requests notification badge
+      - Permission grant interface (for resource owners)
+      - Access control list viewer
+      - Temporary access scheduler
+      - Audit log viewer with filters
+      - Data classification labels on all resources
+      - Warning dialogs for restricted data access
+      - Compliance reporting dashboard
+    </permissions_ui>
+
+    <mcp_server_ui>
+      - MCP server marketplace browser
+      - Server connection wizard
+      - Available servers grid (official/community/private)
+      - Server status indicators (healthy/error/offline)
+      - One-click server installation
+      - Server configuration editor (JSON/YAML)
+      - Tool/resource discovery viewer
+      - Server permissions matrix
+      - Connection testing interface
+      - Server logs viewer with filtering
+      - Server health dashboard
+      - Error notifications and troubleshooting
+      - Server version management
+      - Server tags and categorization
+      - Server ratings and reviews
+      
+      <server_connection_flow>
+        - Browse marketplace or search for server
+        - Click "Install" or "Connect"
+        - Configure connection (command, args, env, or URL)
+        - Set authentication (OAuth, API key, none)
+        - Test connection to verify
+        - Discover available tools and resources
+        - Set permissions (which users can access)
+        - Assign to agents
+        - Monitor health and logs
+      </server_connection_flow>
+    </mcp_server_ui>
+
+    <agent_mcp_configuration_ui>
+      - MCP server selector when creating/editing agent
+      - Connected servers list with checkboxes
+      - Tool whitelist/blacklist per server
+      - Resource access patterns (wildcards supported)
+      - Server-specific configuration editor
+      - Tool preview with descriptions
+      - Test tool execution in agent builder
+      - Connection status indicators
+      - Available tools displayed in agent detail view
+    </agent_mcp_configuration_ui>
+
+    <agent_routing_ui>
+      - Agent selector dropdown in input area
+      - "Auto-route" mode toggle (default on)
+      - Manual agent selection indicator
+      - Routing decision tooltip (why this agent was chosen)
+      - Agent handoff notification in chat
+      - Agent execution timeline for multi-agent flows
+      - Override agent button during conversation
+      - Suggested agents panel based on query
+    </agent_routing_ui>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      - Primary: Orange/amber accent (#CC785C claude-style)
+      - Agent indicators: Blue (#0078D4), Green (#10B981), Purple (#8B5CF6)
+      - Background: White (light mode), Dark gray (#1A1A1A dark mode)
+      - Surface: Light gray (#F5F5F5 light), Darker gray (#2A2A2A dark)
+      - Text: Near black (#1A1A1A light), Off-white (#E5E5E5 dark)
+      - Borders: Light gray (#E5E5E5 light), Dark gray (#404040 dark)
+      - Code blocks: Monaco editor theme
+      - Agent status: Thinking (blue pulse), Executing (orange), Success (green), Error (red)
+    </color_palette>
+
+    <typography>
+      - Sans-serif system font stack (Inter, SF Pro, Roboto, system-ui)
+      - Headings: font-semibold
+      - Body: font-normal, leading-relaxed
+      - Code: Monospace (JetBrains Mono, Consolas, Monaco)
+      - Message text: text-base (16px), comfortable line-height
+    </typography>
+
+    <agent_components>
+      <agent_badge>
+        - Small pill-shaped badge
+        - Agent name + icon
+        - Color-coded by agent type
+        - Hover tooltip with agent details
+      </agent_badge>
+
+      <agent_status_indicator>
+        - Animated pulse for "thinking"
+        - Progress bar for execution
+        - Checkmark for complete
+        - Error icon for failures
+      </agent_status_indicator>
+
+      <workflow_graph>
+        - Node for each agent
+        - Edges showing data flow
+        - Current step highlighted
+        - Completed steps dimmed
+        - Errors marked in red
+      </workflow_graph>
+    </agent_components>
+
+    <animations>
+      - Smooth transitions (150-300ms)
+      - Fade in for new messages
+      - Slide in for sidebar
+      - Typing indicator animation
+      - Agent thinking pulse animation
+      - Workflow execution animation
+      - Loading spinner for generation
+      - Skeleton loaders for content
+    </animations>
+  </design_system>
+
+  <key_interactions>
+    <agent_conversation_flow>
+      1. User selects agent from dropdown or uses default
+      2. User types message in input field
+      3. Optional: Attach images/documents
+      4. Click send or press Enter
+      5. Message appears in chat immediately
+      6. Agent status changes to "thinking" with pulse animation
+      7. If agent uses tools, show "executing: [tool_name]"
+      8. If workflow, show workflow graph with current step
+      9. Response streams in word by word
+      10. Agent status changes to "complete"
+      11. Code blocks render with syntax highlighting
+      12. Artifacts detected and rendered in side panel with agent attribution
+      13. Message complete, enable regenerate with same or different agent
+    </agent_conversation_flow>
+
+    <multi_agent_workflow>
+      1. User triggers workflow (manual or automatic)
+      2. Workflow graph appears in right panel
+      3. First agent executes, node highlights
+      4. Output streams to chat with agent badge
+      5. Next agent receives input, executes
+      6. Workflow graph updates showing progress
+      7. Final agent completes, full result shown
+      8. User can inspect intermediate results
+      9. Can restart workflow or modify and retry
+    </multi_agent_workflow>
+
+    <agent_creation_flow>
+      1. User clicks "Create Agent" button
+      2. Modal opens with agent builder
+      3. Fill in: name, description, model, system prompt
+      4. Add tools from library or create custom
+      5. Configure execution settings (timeout, retries)
+      6. Test agent with sample input
+      7. Save agent to library
+      8. Agent available in selector
+    </agent_creation_flow>
+
+    <workflow_design_flow>
+      1. User clicks "Create Workflow" button
+      2. Visual workflow designer opens
+      3. Drag agents from library onto canvas
+      4. Connect agents with edges
+      5. Configure inputs/outputs for each node
+      6. Add conditional branches if needed
+      7. Test workflow execution
+      8. Save workflow
+      9. Workflow available for conversations
+    </workflow_design_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Setup Agent Framework Backend</title>
+      <tasks>
+        - Initialize FastAPI server with SQLite database
+        - Install and configure Microsoft Agent Framework
+        - Set up Claude API client with streaming support
+        - Create database schema with migrations
+        - Implement authentication endpoints
+        - Set up basic CORS and middleware
+        - Create health check endpoint
+        - Initialize base agent classes
+      </tasks>
+    </step>
+
+    <step number="2">
+      <title>Implement Core Agents</title>
+      <tasks>
+        - Create conversation agent (main chat handler)
+        - Implement artifact agent (code/content generation)
+        - Build search agent (conversation search)
+        - Create analysis agent (usage analytics)
+        - Implement orchestrator agent (multi-agent coordination)
+        - Add agent state management
+        - Implement agent execution tracking
+        - Add agent versioning support
+      </tasks>
+    </step>
+
+    <step number="3">
+      <title>Build Agent Management API</title>
+      <tasks>
+        - CRUD endpoints for agents
+        - Agent testing endpoint
+        - Agent execution endpoint
+        - Agent versioning endpoints
+        - Agent template library endpoints
+        - Agent metrics and analytics
+        - Agent import/export
+      </tasks>
+    </step>
+
+    <step number="4">
+      <title>Build Core Chat Interface</title>
+      <tasks>
+        - Create main layout with sidebar and chat area
+        - Implement message display with markdown rendering
+        - Add streaming message support with SSE
+        - Build input area with auto-resize textarea
+        - Add code block syntax highlighting
+        - Implement stop generation functionality
+        - Add typing indicators and agent status
+        - Add agent selector in UI
+        - Show active agent badge in messages
+      </tasks>
+    </step>
+
+    <step number="5">
+      <title>Implement Workflow Engine</title>
+      <tasks>
+        - Build workflow execution engine
+        - Implement graph-based agent orchestration
+        - Add workflow state management
+        - Create workflow visualization components
+        - Build visual workflow designer UI
+        - Add workflow testing capabilities
+        - Implement workflow templates
+        - Add workflow analytics
+      </tasks>
+    </step>
+
+    <step number="6">
+      <title>Conversation and Project Management</title>
+      <tasks>
+        - Create conversation list in sidebar
+        - Implement new conversation creation
+        - Add conversation switching with agent context
+        - Build conversation rename functionality
+        - Implement delete with confirmation
+        - Add conversation search
+        - Create conversation grouping by date
+        - Build projects CRUD endpoints
+        - Implement project-specific agents and workflows
+      </tasks>
+    </step>
+
+    <step number="7">
+      <title>Artifacts System</title>
+      <tasks>
+        - Build artifact detection from agent responses
+        - Create artifact rendering panel
+        - Implement code artifact viewer
+        - Add HTML/SVG live preview
+        - Build artifact editing interface
+        - Add artifact versioning
+        - Implement full-screen artifact view
+        - Show agent attribution for artifacts
+      </tasks>
+    </step>
+
+    <step number="8">
+      <title>Agent Builder UI</title>
+      <tasks>
+        - Create agent creation modal
+        - Build agent configuration form
+        - Add system prompt editor with preview
+        - Implement tool selection interface
+        - Add agent testing playground
+        - Create agent template library browser
+        - Build agent sharing functionality
+        - Add agent performance dashboard
+      </tasks>
+    </step>
+
+    <step number="9">
+      <title>Workflow Designer UI</title>
+      <tasks>
+        - Build visual workflow canvas
+        - Implement drag-and-drop agent nodes
+        - Add edge connections between agents
+        - Create input/output configuration
+        - Add conditional branching UI
+        - Implement workflow execution visualization
+        - Add workflow debugging tools
+        - Create workflow template library
+      </tasks>
+    </step>
+
+    <step number="10">
+      <title>Knowledge Base and RAG</title>
+      <tasks>
+        - Implement document upload for projects
+        - Add document chunking and embedding
+        - Build vector store integration (ChromaDB/FAISS)
+        - Create RAG search tool for agents
+        - Add knowledge base management UI
+        - Implement semantic search
+        - Add knowledge base analytics
+      </tasks>
+    </step>
+
+    <step number="11">
+      <title>Advanced Features</title>
+      <tasks>
+        - Add model selection dropdown
+        - Implement temperature and parameter controls
+        - Build image upload functionality
+        - Create message editing and regeneration
+        - Add conversation branching
+        - Implement export functionality
+        - Add multi-agent conversation replay
+        - Build agent comparison tools
+      </tasks>
+    </step>
+
+    <step number="12">
+      <title>Settings and Customization</title>
+      <tasks>
+        - Build settings modal with tabs
+        - Implement theme switching (light/dark)
+        - Add custom instructions management
+        - Create keyboard shortcuts
+        - Build prompt library
+        - Add usage tracking dashboard
+        - Implement agent framework configuration
+        - Add API key management
+      </tasks>
+    </step>
+
+    <step number="13">
+      <title>Observability and Debugging</title>
+      <tasks>
+        - Add execution trace logging
+        - Build agent execution logs viewer
+        - Implement performance metrics tracking
+        - Create agent state inspector
+        - Add workflow execution timeline
+        - Build debugging console
+        - Implement error tracking and reporting
+      </tasks>
+    </step>
+
+    <step number="14">
+      <title>Sharing and Collaboration</title>
+      <tasks>
+        - Implement conversation sharing with tokens
+        - Create public share view
+        - Add export to multiple formats
+        - Build prompt templates
+        - Create example conversations
+        - Add agent sharing and marketplace (mock)
+        - Implement workflow sharing
+      </tasks>
+    </step>
+
+    <step number="15">
+      <title>Permissions and Access Control</title>
+      <tasks>
+        - Implement RBAC system with roles and permissions
+        - Create user role assignment endpoints
+        - Build permission checking middleware
+        - Add data classification enforcement
+        - Implement row-level security for databases
+        - Create access request workflow
+        - Build permission grant/revoke UI
+        - Add audit logging for all access
+        - Create compliance reporting dashboard
+        - Implement temporary access grants
+        - Add data masking for unauthorized users
+        - Build admin permission management interface
+      </tasks>
+    </step>
+
+    <step number="16">
+      <title>Agent and Workflow Marketplace</title>
+      <tasks>
+        - Build marketplace API endpoints
+        - Create agent/workflow search with filters
+        - Implement tagging system (official/domain/custom)
+        - Add rating and review system
+        - Build visual marketplace UI (grid/list views)
+        - Create agent/workflow detail pages
+        - Implement clone/customize functionality
+        - Add favorites and collections
+        - Build trending and featured sections
+        - Create recommendation engine
+        - Add agent/workflow sharing with permissions
+        - Implement import/export functionality
+      </tasks>
+    </step>
+
+    <step number="17">
+      <title>Agent Routing System</title>
+      <tasks>
+        - Enhance conversation agent with routing logic
+        - Implement query classification for routing
+        - Add manual agent selection override
+        - Create routing decision logging
+        - Build agent handoff notifications
+        - Add suggested agents based on context
+        - Implement agent execution timeline visualization
+        - Create auto-route mode toggle
+        - Add routing analytics and metrics
+        - Build agent recommendation system
+      </tasks>
+    </step>
+
+    <step number="18">
+      <title>MCP Server Infrastructure</title>
+      <tasks>
+        - Implement MCP protocol client (stdio, SSE, WebSocket transports)
+        - Build MCP server registry and lifecycle management
+        - Create server discovery and tool/resource enumeration
+        - Add server health monitoring and restart logic
+        - Implement connection pooling and reuse
+        - Build server permission checking middleware
+        - Create MCP server logs and observability
+        - Add error handling and retry logic
+        - Implement rate limiting per server
+        - Build server version management
+      </tasks>
+    </step>
+
+    <step number="19">
+      <title>Official MCP Servers</title>
+      <tasks>
+        - Deploy SharePoint MCP server (Graph API integration)
+        - Deploy SQL Database MCP server (multi-DB support)
+        - Deploy ServiceNow MCP server
+        - Deploy Filesystem MCP server
+        - Deploy Google Drive MCP server
+        - Deploy Slack MCP server
+        - Deploy GitHub MCP server
+        - Deploy Web Search MCP server
+        - Configure authentication for each server
+        - Set up permission mappings
+        - Test tool execution and resource access
+        - Document server capabilities
+      </tasks>
+    </step>
+
+    <step number="20">
+      <title>MCP Marketplace and Management UI</title>
+      <tasks>
+        - Build MCP server marketplace browser
+        - Create server installation wizard
+        - Implement server configuration editor
+        - Add tool/resource discovery UI
+        - Build connection testing interface
+        - Create server health dashboard
+        - Add server logs viewer
+        - Implement server permissions UI
+        - Build server rating and review system
+        - Create server search and filtering
+        - Add one-click installation flow
+        - Build server templates for custom servers
+      </tasks>
+    </step>
+
+    <step number="21">
+      <title>Agent-MCP Integration</title>
+      <tasks>
+        - Add MCP server selector to agent builder
+        - Implement agent-server connection management
+        - Build tool whitelist/blacklist configuration
+        - Add resource access pattern configuration
+        - Create automatic tool discovery for agents
+        - Implement tool execution through MCP protocol
+        - Add resource reading through MCP protocol
+        - Build multi-server orchestration in workflows
+        - Create MCP server switching during conversation
+        - Add server-specific agent templates
+      </tasks>
+    </step>
+
+    <step number="22">
+      <title>Custom MCP Server Development</title>
+      <tasks>
+        - Create MCP server SDK documentation
+        - Build MCP server templates (Python/TypeScript)
+        - Implement server registration workflow
+        - Add server approval process (for community servers)
+        - Create server testing and validation tools
+        - Build server deployment guides
+        - Add server debugging tools
+        - Create example custom servers
+        - Implement private organization server support
+        - Build server sharing and distribution
+      </tasks>
+    </step>
+
+    <step number="21">
+      <title>Observability and Debugging</title>
+      <tasks>
+        - Add execution trace logging
+        - Build agent execution logs viewer
+        - Implement performance metrics tracking
+        - Create agent state inspector
+        - Add workflow execution timeline
+        - Build debugging console
+        - Implement error tracking and reporting
+        - Add routing decision transparency
+        - Create permission denial logging
+        - Build integration error diagnostics
+      </tasks>
+    </step>
+
+    <step number="22">
+      <title>Sharing and Collaboration</title>
+      <tasks>
+        - Implement conversation sharing with tokens
+        - Create public share view
+        - Add export to multiple formats
+        - Build prompt templates
+        - Create example conversations
+        - Add agent sharing with granular permissions
+        - Implement workflow sharing
+        - Build team workspaces (if not mocked)
+        - Add collaborative agent editing
+        - Create shared agent collections
+      </tasks>
+    </step>
+
+    <step number="23">
+      <title>Polish and Optimization</title>
+      <tasks>
+        - Optimize for mobile responsiveness
+        - Add command palette (Cmd+K)
+        - Implement comprehensive keyboard navigation
+        - Add onboarding flow with agent intro
+        - Create accessibility improvements
+        - Performance optimization and caching
+        - Add PWA support
+        - Final testing and bug fixes
+        - Security audit
+        - Load testing
+        - Documentation completion
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - Streaming agent responses work smoothly
+      - Multi-agent workflows execute correctly
+      - Agent routing functions intelligently with manual override
+      - Artifact detection and rendering accurate
+      - Conversation management intuitive and reliable
+      - Agent creation and configuration functional
+      - Workflow designer operational
+      - Knowledge base RAG working correctly
+      - All CRUD operations functional
+      - Agent state persistence working
+      - Permissions enforced correctly across all resources
+      - Data integrations connecting and querying successfully
+      - Marketplace search and filtering responsive
+      - Sharing and collaboration features working
+      - Tag system functional and intuitive
+    </functionality>
+
+    <agent_performance>
+      - Agent execution time < 5 seconds for simple queries
+      - Workflow execution properly orchestrated
+      - Agent routing decisions made in < 500ms
+      - Agent state transitions tracked accurately
+      - Tool execution reliable
+      - Error handling and retries working
+      - Agent metrics captured correctly
+      - Data integration queries complete in < 3 seconds
+    </agent_performance>
+
+    <security_compliance>
+      - RBAC enforced on all endpoints
+      - Data classification respected
+      - Permission checks prevent unauthorized access
+      - Audit logs capture all access attempts
+      - SQL injection prevention working
+      - SharePoint permissions inherited correctly
+      - Row-level security enforced on databases
+      - Sensitive data masked for unauthorized users
+      - Access requests require approval
+      - Temporary permissions expire correctly
+    </security_compliance>
+
+    <user_experience>
+      - Interface matches claude.ai design language
+      - Agent status clearly visible
+      - Workflow visualization intuitive
+      - Agent creation straightforward
+      - Marketplace easy to browse and search
+      - Permission requests clear and simple
+      - Data integration setup guided and error-free
+      - Responsive on all device sizes
+      - Smooth animations and transitions
+      - Fast response times and minimal lag
+      - Intuitive navigation and workflows
+      - Clear feedback for all actions
+      - Auto-routing transparent with override option
+    </user_experience>
+
+    <technical_quality>
+      - Clean, maintainable code structure
+      - Proper error handling throughout
+      - Secure API key management
+      - Optimized database queries
+      - Efficient streaming implementation
+      - Agent Framework best practices followed
+      - Comprehensive testing coverage
+      - Good observability and debugging tools
+      - Integration patterns well-documented
+      - Security vulnerabilities addressed
+    </technical_quality>
+
+    <design_polish>
+      - Consistent with claude.ai visual design
+      - Beautiful typography and spacing
+      - Smooth animations and micro-interactions
+      - Excellent contrast and accessibility
+      - Professional, polished appearance
+      - Dark mode fully implemented
+      - Agent-specific UI elements well-integrated
+      - Marketplace visually appealing
+      - Permission indicators clear and unobtrusive
+      - Data source badges informative
+    </design_polish>
+  </success_criteria>
+
+  <security_compliance_requirements>
+    <authentication_authorization>
+      - JWT-based authentication
+      - Secure session management
+      - MFA support (optional)
+      - OAuth 2.0 for external integrations
+      - API key rotation policies
+      - Rate limiting per user/role
+    </authentication_authorization>
+
+    <data_protection>
+      - Data encryption at rest and in transit
+      - Sensitive data masking in logs
+      - PII detection and handling
+      - Data retention policies
+      - Right to be forgotten (GDPR)
+      - Data export functionality
+      - Secure file upload validation
+    </data_protection>
+
+    <access_control>
+      - Role-based access control (RBAC)
+      - Attribute-based access control (ABAC) for data
+      - Resource-level permissions
+      - Time-bound access grants
+      - Permission inheritance
+      - Least privilege principle
+      - Separation of duties for sensitive operations
+    </access_control>
+
+    <compliance>
+      - Audit trail for all data access
+      - Compliance reporting (SOC 2, GDPR, HIPAA considerations)
+      - Data residency controls
+      - Export control compliance
+      - Access certification workflows
+      - Privacy impact assessments
+      - Regular security reviews
+    </compliance>
+
+    <integration_security>
+      - Secure credential storage (encrypted)
+      - Connection string encryption
+      - Certificate validation
+      - Network security (firewall rules, VPN)
+      - Input validation for SQL/API calls
+      - Output sanitization
+      - Rate limiting on integrations
+      - Connection timeout enforcement
+    </integration_security>
+
+    <agent_security>
+      - Prompt injection detection
+      - Output filtering for sensitive data
+      - Agent execution sandboxing
+      - Tool permission validation
+      - Agent code review for official agents
+      - Agent versioning for rollback
+      - Execution limits (timeout, token caps)
+    </agent_security>
+  </security_compliance_requirements>
+
+  <agent_framework_best_practices>
+    - Keep agent prompts focused and specific
+    - Use MCP servers for all external integrations
+    - Implement proper error handling and retries
+    - Track agent state for context
+    - Version agents for reproducibility
+    - Test agents in isolation before workflows
+    - Monitor agent performance and costs
+    - Use appropriate models for each agent (mini vs full)
+    - Implement timeouts to prevent hanging
+    - Log execution traces for debugging
+    - Cache frequent MCP tool calls
+    - Use workflow parallelization where possible
+    - Whitelist only necessary tools per agent
+    - Test MCP server connections before agent deployment
+    - Monitor MCP server health and restart as needed
+  </agent_framework_best_practices>
+
+  <mcp_architecture_advantages>
+    <standardization>
+      - Single protocol for all data sources (SharePoint, SQL, APIs, etc.)
+      - Consistent tool/resource discovery across all servers
+      - Uniform error handling and retry logic
+      - Standardized authentication patterns
+      - Common monitoring and observability approach
+    </standardization>
+
+    <ecosystem>
+      - Growing library of community MCP servers
+      - Reusable servers across multiple agents and platforms
+      - Official servers maintained by Anthropic and Microsoft
+      - Easy to find and install servers from marketplace
+      - Share custom servers within organization
+    </ecosystem>
+
+    <separation_of_concerns>
+      - Agents focus on reasoning and orchestration
+      - MCP servers handle data access and tool execution
+      - Servers run as independent processes (easier debugging)
+      - Server failures don't crash agents
+      - Can restart/upgrade servers without redeploying agents
+    </separation_of_concerns>
+
+    <security>
+      - Centralized permission checking at MCP server level
+      - Row-level security implemented once per server
+      - Server-side data masking based on user permissions
+      - Audit logging built into MCP protocol
+      - Easier to secure one protocol than many custom APIs
+    </security>
+
+    <scalability>
+      - MCP servers can be deployed separately from main app
+      - Horizontal scaling by running multiple server instances
+      - Connection pooling managed by platform
+      - Server-side caching reduces duplicate queries
+      - Can route to different server instances based on load
+    </scalability>
+
+    <developer_experience>
+      - Easy to add new data sources (just write MCP server)
+      - Test servers independently before integration
+      - Clear separation between tool logic and agent logic
+      - Standard SDK in Python and TypeScript
+      - Extensive documentation and examples
+      - Fast iteration: update server without changing agents
+    </developer_experience>
+
+    <flexibility>
+      - Mix official and custom servers
+      - Use community servers or build proprietary ones
+      - Support stdio (local), SSE, and WebSocket transports
+      - Agents can switch between servers dynamically
+      - Easy to A/B test different server implementations
+    </flexibility>
+  </mcp_architecture_advantages>
+
+  <deployment_considerations>
+    - Use Python 3.11+ for optimal performance
+    - Deploy FastAPI with uvicorn workers (4-8 workers)
+    - Use managed PostgreSQL for production (replace SQLite)
+    - Implement Redis for caching and session storage
+    - Use vector database service for embeddings at scale (Pinecone, Weaviate, or Qdrant)
+    - Monitor agent execution costs
+    - Implement rate limiting per user/role
+    - Set up proper logging and monitoring (DataDog, Prometheus, Grafana)
+    - Use environment variables for all config
+    - Implement CI/CD pipeline for agent updates
+    - Deploy in containerized environment (Docker, Kubernetes)
+    - Use load balancer for horizontal scaling
+    - Implement health checks and auto-recovery
+    - Set up automated backups
+    - Use CDN for frontend assets
+    - Implement API gateway for rate limiting and auth
+    - Use secrets management service (AWS Secrets Manager, Azure Key Vault)
+    - Set up monitoring alerts for security events
+    - Implement disaster recovery procedures
+    - Use infrastructure as code (Terraform, CloudFormation)
+  </deployment_considerations>
+
+  <enterprise_architecture_decisions>
+    <agent_routing_strategy>
+      - Conversation Agent as master orchestrator by default
+      - Query intent classification using lightweight model (GPT-4o-mini)
+      - Routing decision logged with reasoning for transparency
+      - User can override with manual agent selection
+      - Fallback to Conversation Agent if specialized agent unavailable
+      - Context preservation across agent handoffs
+      - Cost optimization by routing simple queries to cheaper models
+    </agent_routing_strategy>
+
+    <permission_model>
+      - RBAC for user-level permissions (Admin, Power User, Standard, Guest)
+      - ABAC for data-level permissions (data classification)
+      - Resource owners can grant/revoke access to their agents/workflows
+      - Time-bound permissions for temporary access
+      - Permission inheritance: Project > Conversations > Messages
+      - Audit logging for all permission changes and access attempts
+      - Compliance reporting with exportable logs
+    </permission_model>
+
+    <data_integration_architecture>
+      - MCP (Model Context Protocol) as unified integration layer
+      - All data sources exposed via standardized MCP servers
+      - Each MCP server has permission requirements
+      - Row-level security enforced within MCP server tools
+      - Platform manages MCP server lifecycle (start/stop/restart)
+      - MCP client connection pooling for performance
+      - Tool result caching with configurable TTL
+      - MCP server health monitoring and auto-restart
+      - Automatic retry with exponential backoff on failures
+      - Circuit breaker pattern for unhealthy servers
+      - Data lineage: User → Agent → MCP Server → Data Source → Response
+      - Transport options: stdio (local), SSE/WebSocket (remote)
+      
+      <mcp_benefits>
+        - Standardized protocol for all integrations
+        - Growing ecosystem of community MCP servers
+        - Separation of concerns (servers run independently)
+        - Easy to add new data sources (just deploy MCP server)
+        - Server-side caching and optimization
+        - Tool/resource discovery automatic
+        - Agent Framework native support
+        - One security model for all integrations
+        - Reusable servers across multiple agents
+      </mcp_benefits>
+    </data_integration_architecture>
+
+    <marketplace_design>
+      - Official agents curated and verified by platform
+      - Community agents peer-reviewed and rated
+      - Personal agents private by default
+      - Team/organization agents shared within tenant
+      - Public agents available to all users
+      - Clone-and-customize workflow encourages innovation
+      - Rating and review system for quality assurance
+      - Usage metrics inform trending and recommendations
+      - Search powered by embeddings for semantic matching
+    </marketplace_design>
+
+    <scalability_patterns>
+      - Stateless API design for horizontal scaling
+      - Agent state persisted to database, not memory
+      - Message streaming via SSE (can migrate to WebSockets)
+      - Background job queue for long-running workflows (Celery, RQ)
+      - Caching layer for frequently accessed agents/workflows
+      - Database connection pooling
+      - Read replicas for reporting queries
+      - Sharding strategy for multi-tenant deployments
+    </scalability_patterns>
+
+    <security_layers>
+      - Network layer: VPC, security groups, firewall rules
+      - Application layer: RBAC, input validation, CSRF protection
+      - Data layer: Encryption at rest, column-level encryption for PII
+      - Integration layer: Credential encryption, certificate pinning
+      - Agent layer: Prompt injection detection, output filtering
+      - Audit layer: Comprehensive logging, SIEM integration
+    </security_layers>
+  </enterprise_architecture_decisions>
+
+  <key_integration_patterns>
+    <mcp_server_connection>
+      ```python
+      from mcp import ClientSession, StdioServerParameters
+      from mcp.client.stdio import stdio_client
+      
+      # Connect to SharePoint MCP server
+      server_params = StdioServerParameters(
+          command="python",
+          args=["-m", "mcp_servers.sharepoint"],
+          env={
+              "GRAPH_CLIENT_ID": os.getenv("GRAPH_CLIENT_ID"),
+              "GRAPH_CLIENT_SECRET": os.getenv("GRAPH_CLIENT_SECRET"),
+              "TENANT_ID": os.getenv("TENANT_ID")
+          }
+      )
+      
+      async with stdio_client(server_params) as (read, write):
+          async with ClientSession(read, write) as session:
+              # Initialize session
+              await session.initialize()
+              
+              # List available tools
+              tools = await session.list_tools()
+              print(f"Available tools: {[t.name for t in tools]}")
+              
+              # Call tool with permission check
+              if user.has_permission("sharepoint.read"):
+                  result = await session.call_tool(
+                      "search_documents",
+                      arguments={
+                          "query": "Q4 budget",
+                          "site": "finance-team"
+                      }
+                  )
+                  return result
+      ```
+    </mcp_server_connection>
+
+    <agent_with_mcp_servers>
+      ```python
+      from azure.ai.agent import Agent
+      
+      # Create agent with MCP server connections
+      data_agent = Agent(
+          name="data-query-agent",
+          model="claude-sonnet-4-5-20250929",
+          system_prompt="You help users query databases and documents...",
+          mcp_servers=[
+              {
+                  "server_id": "sharepoint-server",
+                  "allowed_tools": ["search_documents", "get_document"],
+                  "allowed_resources": ["site://*/documents"]
+              },
+              {
+                  "server_id": "sql-server", 
+                  "allowed_tools": ["query_database", "describe_schema"],
+                  "allowed_resources": ["database://hr/*"]
+              }
+          ],
+          data_classification="internal"
+      )
+      
+      # Agent automatically has access to MCP tools
+      response = await data_agent.run(
+          "Find all documents about Q4 budget and show employee headcount from HR database"
+      )
+      # Agent will use search_documents from SharePoint server
+      # and query_database from SQL server automatically
+      ```
+    </agent_with_mcp_servers>
+
+    <mcp_tool_execution_with_permissions>
+      ```python
+      # Platform manages MCP server access with permissions
+      class MCPServerManager:
+          async def execute_tool(
+              self,
+              server_id: str,
+              tool_name: str,
+              arguments: dict,
+              user: User
+          ):
+              # Get server configuration
+              server = self.get_server(server_id)
+              
+              # Check user has permission to access server
+              if not user.can_access_server(server):
+                  raise PermissionError(f"No access to server {server_id}")
+              
+              # Check data classification
+              if server.data_classification > user.clearance_level:
+                  raise PermissionError("Insufficient clearance level")
+              
+              # Connect to MCP server
+              async with self.get_client_session(server) as session:
+                  # Execute tool
+                  result = await session.call_tool(tool_name, arguments)
+                  
+                  # Log execution for audit
+                  self.log_tool_execution(
+                      server_id=server_id,
+                      tool_name=tool_name,
+                      user_id=user.id,
+                      arguments=arguments,
+                      result=result
+                  )
+                  
+                  return result
+      ```
+    </mcp_tool_execution_with_permissions>
+
+    <custom_mcp_server_example>
+      ```python
+      # Example custom MCP server for company data
+      from mcp.server import Server
+      from mcp.types import Tool, Resource, TextContent
+      
+      app = Server("company-crm-server")
+      
+      @app.list_tools()
+      async def list_tools() -> list[Tool]:
+          return [
+              Tool(
+                  name="search_customers",
+                  description="Search customer database",
+                  inputSchema={
+                      "type": "object",
+                      "properties": {
+                          "query": {"type": "string"},
+                          "status": {"type": "string", "enum": ["active", "inactive", "all"]}
+                      },
+                      "required": ["query"]
+                  }
+              ),
+              Tool(
+                  name="get_customer",
+                  description="Get customer details by ID",
+                  inputSchema={
+                      "type": "object",
+                      "properties": {
+                          "customer_id": {"type": "string"}
+                      },
+                      "required": ["customer_id"]
+                  }
+              )
+          ]
+      
+      @app.call_tool()
+      async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+          if name == "search_customers":
+              # Apply row-level security based on user
+              user_id = arguments.get("_user_id")  # Injected by platform
+              user = get_user(user_id)
+              
+              # Filter results by user's department
+              results = search_db(
+                  query=arguments["query"],
+                  status=arguments.get("status", "all"),
+                  department=user.department  # Row-level security
+              )
+              
+              return [TextContent(
+                  type="text",
+                  text=json.dumps(results)
+              )]
+          
+          elif name == "get_customer":
+              customer = get_customer_by_id(arguments["customer_id"])
+              
+              # Mask sensitive data based on permissions
+              if not user.has_permission("crm.view_financial"):
+                  customer.pop("revenue", None)
+                  customer.pop("credit_limit", None)
+              
+              return [TextContent(
+                  type="text",
+                  text=json.dumps(customer)
+              )]
+      
+      @app.list_resources()
+      async def list_resources() -> list[Resource]:
+          return [
+              Resource(
+                  uri="crm://customers",
+                  name="All Customers",
+                  mimeType="application/json"
+              ),
+              Resource(
+                  uri="crm://customers/active",
+                  name="Active Customers",
+                  mimeType="application/json"
+              )
+          ]
+      
+      if __name__ == "__main__":
+          app.run()
+      ```
+    </custom_mcp_server_example>
+
+    <workflow_with_multiple_mcp_servers>
+      ```python
+      # Workflow that orchestrates multiple MCP servers
+      research_workflow = {
+          "name": "market-research-workflow",
+          "nodes": [
+              {
+                  "id": "search_web",
+                  "agent": "web-search-agent",
+                  "mcp_server": "brave-search-server",
+                  "tool": "brave_search",
+                  "inputs": {"query": "${user_query}"}
+              },
+              {
+                  "id": "search_internal_docs",
+                  "agent": "document-agent",
+                  "mcp_server": "sharepoint-server",
+                  "tool": "search_documents",
+                  "inputs": {
+                      "query": "${user_query}",
+                      "site": "market-research"
+                  }
+              },
+              {
+                  "id": "query_crm",
+                  "agent": "data-agent",
+                  "mcp_server": "company-crm-server",
+                  "tool": "search_customers",
+                  "inputs": {
+                      "query": "${user_query}",
+                      "status": "active"
+                  }
+              },
+              {
+                  "id": "synthesize",
+                  "agent": "analysis-agent",
+                  "inputs": {
+                      "web_results": "${search_web.output}",
+                      "internal_docs": "${search_internal_docs.output}",
+                      "crm_data": "${query_crm.output}"
+                  }
+              }
+          ],
+          "edges": [
+              {"from": "search_web", "to": "synthesize"},
+              {"from": "search_internal_docs", "to": "synthesize"},
+              {"from": "query_crm", "to": "synthesize"}
+          ]
+      }
+      ```
+    </workflow_with_multiple_mcp_servers>
+  </key_integration_patterns>
+</project_specification>

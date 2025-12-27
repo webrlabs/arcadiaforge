@@ -1,0 +1,238 @@
+<project_specification>
+
+  <project_name>Intelligent Business Process Knowledge Platform</project_name>
+  <edition>Enterprise Azure Edition</edition>
+  <version>1.0</version>
+
+  <overview>
+    Build an AI-driven, Azure-native Business Process Knowledge Platform that ingests
+    unstructured enterprise content (PDFs, Office documents, Visio diagrams, SharePoint assets),
+    synthesizes it into a strictly governed Knowledge Graph, and provides a secure GraphRAG
+    conversational experience.
+
+    The system is designed for Windows enterprise environments with Zero-Trust security,
+    Microsoft Entra ID–based authentication and authorization, private networking, compliance,
+    auditability, and operational scalability.
+  </overview>
+
+  <goals>
+    <goal>Azure-native architecture using Microsoft cloud services</goal>
+    <goal>Ontology-enforced, versioned Knowledge Graph</goal>
+    <goal>Zero-Trust authorization with retrieval-time security trimming</goal>
+    <goal>Hybrid GraphRAG (vector search + graph traversal)</goal>
+    <goal>Human-in-the-loop review and governance</goal>
+  </goals>
+
+  <technology_stack>
+
+    <identity_access>
+      <provider>Microsoft Entra ID</provider>
+      <authentication>MSAL</authentication>
+      <authorization>
+        <primary>RBAC via Entra App Roles</primary>
+        <secondary>ABAC via explicitly approved Entra claims</secondary>
+      </authorization>
+    </identity_access>
+
+    <frontend>
+      <hosting>Azure App Service or Azure Container Apps</hosting>
+      <framework>React or Blazor</framework>
+      <security>API-only access via Azure API Management</security>
+    </frontend>
+
+    <backend>
+      <orchestration>Azure Functions (Durable Functions)</orchestration>
+      <api_gateway>Azure API Management</api_gateway>
+    </backend>
+
+    <ai_services>
+      <llm>Azure OpenAI Service</llm>
+      <capabilities>
+        <capability>Multimodal reasoning</capability>
+        <capability>Text embeddings</capability>
+      </capabilities>
+      <document_intelligence>Azure AI Document Intelligence</document_intelligence>
+    </ai_services>
+
+    <data_stores>
+      <object_storage>Azure Blob Storage (ADLS Gen2)</object_storage>
+      <graph_database>Azure Cosmos DB (Gremlin API)</graph_database>
+      <vector_search>Azure AI Search</vector_search>
+      <cache>Azure Cache for Redis</cache>
+    </data_stores>
+
+    <security_infrastructure>
+      <networking>
+        <virtual_networks>true</virtual_networks>
+        <private_link>true</private_link>
+        <public_access>false</public_access>
+      </networking>
+      <secrets>Azure Key Vault</secrets>
+      <identity>Managed Identity</identity>
+    </security_infrastructure>
+
+  </technology_stack>
+
+  <ontology>
+
+    <nodes>
+      <node>Process</node>
+      <node>Task</node>
+      <node>Role</node>
+      <node>System</node>
+      <node>DataAsset</node>
+      <node>Form</node>
+      <node>Policy</node>
+      <node>Procedure</node>
+      <node>Directive</node>
+      <node>Guide</node>
+    </nodes>
+
+    <edges>
+      <edge>PRECEDES</edge>
+      <edge>RESPONSIBLE_FOR</edge>
+      <edge>TRANSFORMS_INTO</edge>
+      <edge>REGULATED_BY</edge>
+    </edges>
+
+    <governance>
+      <versioned>true</versioned>
+      <required_metadata>
+        <field>ontology_version</field>
+        <field>source_document_id</field>
+        <field>confidence_score</field>
+        <field>review_status</field>
+      </required_metadata>
+      <invalid_entity_handling>Quarantine</invalid_entity_handling>
+    </governance>
+
+  </ontology>
+
+  <functional_requirements>
+
+    <ingestion_pipeline>
+
+      <multi_source_ingestion>
+        <sources>
+          <source>SharePoint Online</source>
+          <source>OneDrive for Business</source>
+          <source>Manual Upload</source>
+        </sources>
+        <integration>Microsoft Graph API / Logic Apps</integration>
+        <features>
+          <feature>Incremental sync (delta queries)</feature>
+          <feature>Permission preservation</feature>
+          <feature>Metadata retention</feature>
+        </features>
+      </multi_source_ingestion>
+
+      <ocr_and_layout>
+        <service>Azure AI Document Intelligence</service>
+        <outputs>
+          <output>Text</output>
+          <output>Tables</output>
+          <output>Checkboxes</output>
+          <output>Hierarchy metadata</output>
+        </outputs>
+      </ocr_and_layout>
+
+      <visual_intelligence>
+        <input>PPT and Visio diagrams</input>
+        <model>Azure OpenAI multimodal model</model>
+        <output>Structured JSON graph candidates</output>
+      </visual_intelligence>
+
+      <ontology_mapping>
+        <orchestration>Azure Durable Functions</orchestration>
+        <validation>Strict schema enforcement</validation>
+        <failure_handling>Dead-letter store</failure_handling>
+      </ontology_mapping>
+
+    </ingestion_pipeline>
+
+    <human_in_loop>
+
+      <staging_ui>
+        <layout>Split-screen</layout>
+        <left>Document Viewer</left>
+        <right>Interactive Graph Editor</right>
+      </staging_ui>
+
+      <approval_workflow>
+        <roles_required>true</roles_required>
+        <audit_logging>true</audit_logging>
+      </approval_workflow>
+
+    </human_in_loop>
+
+    <graphrag>
+
+      <query_flow>
+        <step>Authorize request</step>
+        <step>Vector + semantic search</step>
+        <step>Security trimming</step>
+        <step>Targeted graph traversal</step>
+        <step>Context assembly</step>
+        <step>LLM synthesis</step>
+      </query_flow>
+
+      <security_trimming>
+        <method>Azure AI Search filters</method>
+        <filter_expression>
+          group_ids/any(g: search.in(g, 'group1,group2,...'))
+        </filter_expression>
+      </security_trimming>
+
+    </graphrag>
+
+    <security>
+
+      <authorization>
+        <decision_point>API Layer</decision_point>
+        <model>RBAC + optional ABAC</model>
+      </authorization>
+
+      <redaction>
+        <policy>Policy-as-code</policy>
+        <scope>
+          <scope_item>API responses</scope_item>
+          <scope_item>UI</scope_item>
+          <scope_item>Exports</scope_item>
+          <scope_item>LLM context</scope_item>
+        </scope>
+      </redaction>
+
+    </security>
+
+    <gamification>
+      <activity_tracking>Cosmos DB Change Feed</activity_tracking>
+      <leaderboards>Redis cached</leaderboards>
+      <security_override>false</security_override>
+    </gamification>
+
+  </functional_requirements>
+
+  <non_functional_requirements>
+    <compliance>Region-based data residency</compliance>
+    <scalability>Cosmos DB autoscale RU/s</scalability>
+    <latency>P95 retrieval and traversal SLA (configurable)</latency>
+    <reliability>Idempotent, replayable ingestion</reliability>
+    <observability>Centralized logs, metrics, traces, audit logs</observability>
+    <secrets>Managed Identity + Key Vault only</secrets>
+  </non_functional_requirements>
+
+  <implementation_phases>
+    <phase>Foundation</phase>
+    <phase>Intelligence</phase>
+    <phase>Review UI</phase>
+    <phase>Governance & Analytics</phase>
+  </implementation_phases>
+
+  <future_considerations>
+    <feature>Microsoft 365 Copilot Plugin</feature>
+    <feature>Teams Integration</feature>
+    <feature>Process efficiency analytics</feature>
+    <feature>Cross-tenant federation</feature>
+  </future_considerations>
+
+</project_specification>

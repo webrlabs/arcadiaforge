@@ -1,0 +1,199 @@
+<project_specification>
+<project_name>SnippetBox</project_name>
+
+<overview>Build a personal code snippet manager. The app allows developers to save, organize, and quickly retrieve code snippets. It features a modern UI with syntax highlighting and a robust search API. The goal is to demonstrate CRUD operations, search functionality, and proper data validation in an agentic coding workflow.</overview>
+
+<goals_objectives>
+  <objective id="1">Implement full CRUD (Create, Read, Update, Delete) for text-based resources.</objective>
+  <objective id="2">Showcase search and filtering capabilities on both frontend and backend.</objective>
+</goals_objectives>
+
+<technology_stack>
+<frontend>
+  <framework>React (Vite)</framework>
+  <ui>Tailwind CSS (or CSS Modules)</ui>
+  <http_client>fetch or axios</http_client>
+  <extras>react-syntax-highlighter (optional) or simple pre/code tags</extras>
+</frontend>
+
+<backend>
+  <runtime>Python 3.11+</runtime>
+  <framework>FastAPI</framework>
+  <server>uvicorn</server>
+  <database>SQLite (or in-memory for MVP)</database>
+</backend>
+
+<testing>
+  <frontend>Playwright (E2E tests)</frontend>
+  <backend>pytest</backend>
+</testing>
+
+<deployment>
+  <container>Docker</container>
+  <local_dev>docker compose</local_dev>
+</deployment>
+</technology_stack>
+
+<functional_requirements>
+<snippet_management>
+  <FR1_create_snippet>
+    <description>
+      User can create a new snippet.
+    </description>
+    <fields>
+      - Title (required, max 100 chars)
+      - Language (dropdown: Python, JS, HTML, CSS, SQL, Other)
+      - Code (required text blob)
+      - Description (optional)
+    </fields>
+  </FR1_create_snippet>
+
+  <FR2_list_view>
+    <description>
+      Display a grid or list of saved snippets.
+    </description>
+    <requirements>
+      - Show Title, Language, and truncated preview
+      - Sort by newest first
+    </requirements>
+  </FR2_list_view>
+
+  <FR3_detail_view>
+    <description>
+      View full snippet content.
+    </description>
+    <requirements>
+      - Syntax highlighting for the code block (visual only)
+      - Copy to clipboard button
+    </requirements>
+  </FR3_detail_view>
+
+  <FR4_search_filter>
+    <description>
+      Find snippets quickly.
+    </description>
+    <requirements>
+      - Search bar filters by Title or Content
+      - Filter dropdown by Language
+    </requirements>
+  </FR4_search_filter>
+</snippet_management>
+
+<api>
+  <FR5_snippets_endpoints>
+    <endpoints>
+      - GET /api/snippets (supports ?search= & ?lang=)
+      - POST /api/snippets
+      - GET /api/snippets/{id}
+      - PUT /api/snippets/{id}
+      - DELETE /api/snippets/{id}
+    </endpoints>
+    <schema>
+      Snippet { id: int, title: str, language: str, code: str, created_at: datetime }
+    </schema>
+  </FR5_snippets_endpoints>
+</api>
+</functional_requirements>
+
+<non_functional_requirements>
+<usability>
+- Clean, readable typography (monospace for code)
+- Responsive design
+</usability>
+<performance>
+- Search results return in under 100ms
+</performance>
+</non_functional_requirements>
+
+<core_system_components>
+<frontend_app>
+<components>
+- SnippetForm
+- SnippetList
+- SnippetCard
+- SearchBar
+- CodeBlock
+</components>
+</frontend_app>
+
+<backend_service>
+  <modules>
+    - models (Pydantic schemas)
+    - database (SQLite connection)
+    - routes (FastAPI routers)
+  </modules>
+</backend_service>
+</core_system_components>
+
+<api_endpoints_summary>
+- GET /healthz
+- GET /api/snippets
+- POST /api/snippets
+- GET /api/snippets/{id}
+- DELETE /api/snippets/{id}
+</api_endpoints_summary>
+
+<repo_structure>
+<tree>
+- /frontend
+- package.json
+- src/
+- /backend
+- pyproject.toml
+- app/
+- docker-compose.yml
+- README.md
+</tree>
+</repo_structure>
+
+<acceptance_tests>
+<backend_tests>
+- Create snippet returns 201 and ID
+- Get snippet by ID returns correct data
+- Search returns matching snippets
+- Invalid language defaults to "Text" or returns error
+</backend_tests>
+<frontend_tests>
+- User can fill form and save snippet
+- List updates after creation
+- Search filters the list visible items
+- Copy button places code in clipboard
+</frontend_tests>
+</acceptance_tests>
+
+<implementation_phases>
+<phase number="1">
+<title>Scaffold & Backend</title>
+<deliverables>
+- Project structure
+- FastAPI CRUD endpoints (in-memory or SQLite)
+- Backend tests
+</deliverables>
+</phase>
+
+<phase number="2">
+<title>Frontend Basics</title>
+<deliverables>
+- React setup
+- Create Snippet Form
+- List View (basic)
+</deliverables>
+</phase>
+
+<phase number="3">
+<title>Polish & Search</title>
+<deliverables>
+- Syntax highlighting
+- Search/Filter implementation
+- Docker compose
+</deliverables>
+</phase>
+</implementation_phases>
+
+<success_criteria>
+- Fully functional CRUD for snippets
+- Search works effectively
+- Unit and E2E tests pass
+- App runs via docker compose with a single command
+</success_criteria>
+</project_specification>

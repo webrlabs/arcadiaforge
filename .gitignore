@@ -1,0 +1,94 @@
+# ================================
+# Project-specific generated data
+# ================================
+generations/
+logs/
+
+# ================================
+# Python bytecode / cache
+# ================================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ================================
+# Virtual environments
+# ================================
+.venv/
+venv/
+env/
+ENV/
+.conda/
+conda-env/
+.mamba/
+
+# ================================
+# Python packaging
+# ================================
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# ================================
+# Testing / coverage
+# ================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ================================
+# Jupyter
+# ================================
+.ipynb_checkpoints/
+
+# ================================
+# Logs & runtime artifacts
+# ================================
+*.log
+*.out
+*.err
+*.pid
+
+# ================================
+# IDEs & editors
+# ================================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ================================
+# Coding Agents
+# ================================
+.claude
+
+# ================================
+# OS-specific
+# ================================
+.DS_Store
+Thumbs.db
+
+# ================================
+# Environment & secrets
+# ================================
+.env
+*.env
+
+# ================================
+# Caches / tooling
+# ================================
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.cache/
+
+# ================================
+# Local config overrides
+# ================================
+config.local.yaml
+config.local.yml

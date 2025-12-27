@@ -1,0 +1,261 @@
+<project_specification>
+<project_name>CalcPad</project_name>
+
+<overview> Build a simple web-based calculator with a clean UI and a small backend API. The app supports basic arithmetic, a calculation history panel, and optional unit conversions. The purpose is to validate an agentic coding framework can: scaffold a full-stack repo, implement features incrementally, write tests, handle errors, and deploy. </overview>
+
+<goals_objectives>
+  <objective id="1">Fast end-to-end build: UI + API + tests.</objective>
+  <objective id="2">Demonstrate basic state management (history) and input validation (safe evaluation).</objective>
+</goals_objectives>
+
+<technology_stack>
+<frontend>
+  <framework>React (Vite)</framework>
+  <ui>Minimal CSS (or Tailwind optional)</ui>
+  <http_client>fetch</http_client>
+</frontend>
+
+<backend>
+  <runtime>Python 3.11+</runtime>
+  <framework>FastAPI</framework>
+  <server>uvicorn</server>
+</backend>
+
+<testing>
+  <frontend>Playwright (smoke tests)</frontend>
+  <backend>pytest</backend>
+</testing>
+
+<deployment>
+  <container>Docker (multi-stage optional)</container>
+  <local_dev>docker compose</local_dev>
+</deployment>
+
+
+</technology_stack>
+
+<functional_requirements>
+<calculator>
+<FR1_expression_input>
+<description>
+User can enter an expression (e.g., "12*(3+4)/2") and request evaluation.
+</description>
+<rules>
+- Support +, -, *, /, parentheses, decimals
+- Reject invalid syntax with a clear error message
+- No arbitrary code execution; expression parsing must be safe
+</rules>
+</FR1_expression_input>
+
+  <FR2_buttons_ui>
+    <description>
+      Provide clickable buttons for digits and operators for mouse/touch usage.
+    </description>
+    <buttons>
+      - Digits 0-9
+      - Operators + - * /
+      - Parentheses ( )
+      - Decimal .
+      - Clear (C), Backspace (⌫), Equals (=)
+    </buttons>
+  </FR2_buttons_ui>
+
+  <FR3_history_panel>
+    <description>
+      Show a scrollable history of recent calculations.
+    </description>
+    <requirements>
+      - Each entry: expression, result, timestamp
+      - Max 50 entries (drop oldest)
+      - Click an entry to re-load expression into the input box
+    </requirements>
+  </FR3_history_panel>
+
+  <FR4_unit_conversion_optional>
+    <description>
+      Optional small converter panel to test additional routes and UI state.
+    </description>
+    <conversions>
+      - inches ↔ cm
+      - lb ↔ kg
+      - F ↔ C
+    </conversions>
+  </FR4_unit_conversion_optional>
+</calculator>
+
+<api>
+  <FR5_evaluate_endpoint>
+    <method>POST</method>
+    <path>/api/eval</path>
+    <request_schema>
+      { "expression": "string" }
+    </request_schema>
+    <response_schema_success>
+      { "result": "number", "normalized_expression": "string" }
+    </response_schema_success>
+    <response_schema_error>
+      { "error": "string", "code": "string" }
+    </response_schema_error>
+    <requirements>
+      - Must validate input length (e.g., max 200 chars)
+      - Must return structured errors (no stack traces)
+    </requirements>
+  </FR5_evaluate_endpoint>
+
+  <FR6_history_endpoints>
+    <endpoints>
+      - GET /api/history
+      - POST /api/history/clear
+    </endpoints>
+    <storage>
+      In-memory history is acceptable for MVP; persistence optional via SQLite.
+    </storage>
+  </FR6_history_endpoints>
+
+  <FR7_converter_endpoint_optional>
+    <method>POST</method>
+    <path>/api/convert</path>
+    <request_schema>
+      { "value": "number", "from_unit": "string", "to_unit": "string" }
+    </request_schema>
+    <response_schema_success>
+      { "result": "number" }
+    </response_schema_success>
+  </FR7_converter_endpoint_optional>
+</api>
+
+
+</functional_requirements>
+
+<non_functional_requirements>
+<security>
+- No eval() usage; use a safe expression parser
+- Input validation and rate limiting are optional but encouraged
+</security>
+
+<performance>
+  - Evaluation response time target: < 50ms for typical expressions
+  - UI updates should feel instantaneous
+</performance>
+
+<reliability>
+  - Backend should have health endpoint: GET /healthz returns 200 OK
+  - Frontend should display "API unavailable" state if backend is down
+</reliability>
+
+<usability>
+  - Keyboard support: Enter evaluates, Esc clears, Backspace deletes
+  - Mobile-friendly layout
+</usability>
+
+
+</non_functional_requirements>
+
+<core_system_components>
+<frontend_app>
+<pages>
+- Single page calculator
+</pages>
+<components>
+- ExpressionInput
+- Keypad
+- HistoryPanel
+- ConverterPanel (optional)
+</components>
+</frontend_app>
+
+<backend_service>
+  <modules>
+    - expression_parser (safe parsing + evaluation)
+    - history_store (in-memory ring buffer)
+    - converters (optional)
+  </modules>
+</backend_service>
+
+
+</core_system_components>
+
+<api_endpoints_summary>
+- GET /healthz
+- POST /api/eval
+- GET /api/history
+- POST /api/history/clear
+- POST /api/convert (optional)
+</api_endpoints_summary>
+
+<repo_structure>
+<tree>
+- /frontend
+- package.json
+- src/
+- /backend
+- pyproject.toml
+- app/
+- docker-compose.yml
+- README.md
+</tree>
+</repo_structure>
+
+<acceptance_tests>
+<backend_tests>
+- Evaluate "1+2*3" returns 7
+- Evaluate "(2+3)/5" returns 1
+- Invalid input "2++2" returns error with code "INVALID_EXPRESSION"
+- Very long input rejected with code "INPUT_TOO_LONG"
+</backend_tests>
+
+<frontend_tests>
+  - Click "1", "+", "2", "=" shows "3"
+  - Enter expression via keyboard and press Enter evaluates
+  - History records the calculation and can be clicked to restore expression
+</frontend_tests>
+
+
+</acceptance_tests>
+
+<implementation_phases>
+<phase number="1">
+<title>Scaffold</title>
+<deliverables>
+- Repo structure created
+- Backend FastAPI running with /healthz
+- Frontend React app running with placeholder UI
+</deliverables>
+</phase>
+
+<phase number="2">
+  <title>Core Calculator</title>
+  <deliverables>
+    - POST /api/eval implemented with safe parser
+    - Frontend keypad + expression input wired to API
+    - Basic error handling and tests
+  </deliverables>
+</phase>
+
+<phase number="3">
+  <title>History + Polish</title>
+  <deliverables>
+    - History endpoints and UI panel
+    - Keyboard shortcuts
+    - Docker compose for one-command local run
+  </deliverables>
+</phase>
+
+<phase number="4">
+  <title>Optional Converter</title>
+  <deliverables>
+    - /api/convert + UI panel
+    - Additional tests
+  </deliverables>
+</phase>
+
+
+</implementation_phases>
+
+<success_criteria>
+- A user can evaluate expressions safely from a web UI
+- History is visible and interactive
+- Automated tests pass (backend + minimal UI smoke test)
+- App runs via docker compose with a single command
+</success_criteria>
+</project_specification>

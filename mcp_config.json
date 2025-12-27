@@ -1,0 +1,106 @@
+{
+  "puppeteer": {
+    "enabled": true,
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-puppeteer"
+    ],
+    "tools": [
+      "mcp__puppeteer__puppeteer_navigate",
+      "mcp__puppeteer__puppeteer_screenshot",
+      "mcp__puppeteer__puppeteer_click",
+      "mcp__puppeteer__puppeteer_fill",
+      "mcp__puppeteer__puppeteer_select",
+      "mcp__puppeteer__puppeteer_hover",
+      "mcp__puppeteer__puppeteer_evaluate"
+    ]
+  },
+  "github": {
+    "enabled": false,
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-github"
+    ],
+    "env_vars": [
+      "GITHUB_PERSONAL_ACCESS_TOKEN"
+    ],
+    "tools": [
+      "mcp__github__create_issue",
+      "mcp__github__list_issues",
+      "mcp__github__update_issue",
+      "mcp__github__add_issue_comment",
+      "mcp__github__search_repositories",
+      "mcp__github__create_repository",
+      "mcp__github__get_file_contents",
+      "mcp__github__create_or_update_file",
+      "mcp__github__push_files",
+      "mcp__github__create_pull_request",
+      "mcp__github__list_pull_requests",
+      "mcp__github__get_pull_request",
+      "mcp__github__merge_pull_request",
+      "mcp__github__get_branch",
+      "mcp__github__list_branches",
+      "mcp__github__list_commits"
+    ]
+  },
+  "search": {
+    "enabled": false,
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-brave-search"
+    ],
+    "env_vars": [
+      "BRAVE_API_KEY"
+    ],
+    "tools": [
+      "mcp__search__brave_web_search",
+      "mcp__search__brave_local_search"
+    ]
+  },
+  "fetch": {
+    "enabled": false,
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-fetch"
+    ],
+    "tools": [
+      "mcp__fetch__fetch"
+    ]
+  },
+  "postgres": {
+    "enabled": false,
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-postgres"
+    ],
+    "args_append_env": [
+      "POSTGRES_URL"
+    ],
+    "tools": [
+      "mcp__postgres__query",
+      "mcp__postgres__get_table_schema",
+      "mcp__postgres__list_tables"
+    ]
+  },
+  "sqlite": {
+    "enabled": false,
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-sqlite"
+    ],
+    "args_append_env": [
+      "SQLITE_FILE"
+    ],
+    "tools": [
+      "mcp__sqlite__query",
+      "mcp__sqlite__get_table_schema",
+      "mcp__sqlite__list_tables"
+    ]
+  }
+}

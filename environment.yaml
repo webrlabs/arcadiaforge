@@ -1,0 +1,13 @@
+name: arcadiaforge
+channels:
+  - conda-forge
+dependencies:
+  - python
+  - aiosqlite
+  - pytest
+  - pytest-asyncio
+  - python-dotenv
+  - rich
+  - pip
+  - pip:
+      - claude-code-sdk

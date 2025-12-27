@@ -1,0 +1,23 @@
+# Project Status (Auto-updated each session)
+
+## Quick Stats
+- Tests Passing: {passing}/{total} ({percent}%)
+- Last Session: {session_number}
+- Last Updated: {date}
+
+## Current Focus
+{current_focus}
+
+## Recent Progress (Last 3 Sessions)
+{recent_progress}
+
+## Next Priority
+{next_priority}
+
+## Known Issues
+{known_issues}
+
+## Environment
+- Backend: port {backend_port}
+- Frontend: port {frontend_port}
+- Servers: {server_status}
