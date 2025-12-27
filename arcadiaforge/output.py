@@ -281,11 +281,14 @@ def icon(name: str) -> str:
 _CAN_USE_EMOJI = _can_use_emoji()
 
 # Create themed console - this is the single source of truth for output
-# Disable emoji on Windows with non-UTF-8 encoding to prevent UnicodeEncodeError
+# Disable legacy Windows mode to use VT (Virtual Terminal) mode which handles Unicode properly
+# Also disable emoji on Windows with non-UTF-8 encoding to prevent UnicodeEncodeError
+import os as _os
 console = Console(
     theme=arcadia_theme(),
     emoji=_CAN_USE_EMOJI,
-    # Use 'replace' error handling to avoid crashes on encoding issues
+    # Disable legacy Windows console API - use VT mode instead for proper Unicode support
+    legacy_windows=False if _os.name == 'nt' else None,
     force_terminal=None,  # Auto-detect
 )
 
