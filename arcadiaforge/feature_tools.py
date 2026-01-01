@@ -8,7 +8,6 @@ via the project's SQLite database (.arcadia/project.db).
 All feature state is stored in the database - no JSON files needed.
 """
 
-import json
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,19 +49,11 @@ def update_session_id(session_id: int) -> None:
     global _current_session_id
     _current_session_id = session_id
 
-def _get_legacy_feature_list_path() -> Path:
-    """Get path to legacy feature_list.json (for migration only)."""
-    if _project_dir is None:
-        raise RuntimeError("Project directory not set.")
-    return _project_dir / "feature_list.json"
-
 async def _load_features() -> List[Dict]:
     """
     Load features from database.
 
-    On first run, if the database is empty but feature_list.json exists,
-    the JSON file is imported into the database (one-time migration for new projects).
-    After initial import, all feature data is read from/written to the database.
+    All feature data is read from/written to the database.
     """
     session_maker = get_session_maker()
     async with session_maker() as session:
@@ -88,36 +79,7 @@ async def _load_features() -> List[Dict]:
                 for f in db_features
             ]
 
-        # One-time migration: Import feature_list.json into database (for new projects)
-        path = _get_legacy_feature_list_path()
-        if not path.exists():
-            return []
-
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        raw_features = data if isinstance(data, list) else data.get("features", [])
-
-        # Import features into database
-        for idx, item in enumerate(raw_features):
-            feat = Feature(
-                index=idx,
-                category=item.get("category", "functional"),
-                description=item.get("description", ""),
-                steps=item.get("steps", []),
-                passes=item.get("passes", False),
-                verified_at=datetime.fromisoformat(item["verified_at"]) if item.get("verified_at") else None,
-            )
-            if "audit" in item:
-                audit = item["audit"]
-                feat.audit_status = audit.get("status")
-                feat.audit_notes = audit.get("notes", [])
-                feat.audit_reviewer = audit.get("reviewer")
-
-            session.add(feat)
-
-        await session.commit()
-        return raw_features
+        return []
 
 async def _save_features(features: List[Dict]) -> None:
     """Save features to database only."""
@@ -163,19 +125,91 @@ async def feature_stats(args: dict) -> dict:
     
     return {"content": [{"type": "text", "text": f"Progress: {passing}/{total} ({percent:.1f}%)"}]}
 
-@tool("feature_next", "Get next feature(s).", {"count": int})
+async def _get_blocked_keywords() -> list:
+    """
+    Get list of keywords that indicate blocked features based on unavailable capabilities.
+
+    Checks the database for capability status and returns keywords to filter out.
+    """
+    blocked_keywords = []
+
+    try:
+        from arcadiaforge.db.models import SystemCapability
+        session_maker = get_session_maker()
+        async with session_maker() as session:
+            result = await session.execute(select(SystemCapability))
+            capabilities = {c.capability_name: c.is_available for c in result.scalars().all()}
+
+            if not capabilities.get("docker", False):
+                blocked_keywords.extend(["docker", "container", "docker-compose", "dockerfile"])
+            if not capabilities.get("postgres", False):
+                blocked_keywords.extend(["postgresql", "postgres", "psql"])
+    except Exception:
+        pass
+
+    return blocked_keywords
+
+
+def _is_feature_blocked(feature: dict, blocked_keywords: list) -> bool:
+    """Check if a feature is blocked by missing capabilities."""
+    if not blocked_keywords:
+        return False
+
+    title_lower = feature.get("description", "").lower()
+    steps_text = " ".join(feature.get("steps", [])).lower()
+
+    for keyword in blocked_keywords:
+        if keyword in title_lower or keyword in steps_text:
+            return True
+
+    # Check if explicitly marked as blocked (in metadata)
+    metadata = feature.get("metadata", {})
+    if metadata.get("blocked_by_capability"):
+        return True
+
+    return False
+
+
+@tool("feature_next", "Get next feature(s).", {"count": int, "skip_blocked": bool})
 async def feature_next(args: dict) -> dict:
+    """
+    Get next features to implement.
+
+    Args:
+        count: Number of features to return (default: 1)
+        skip_blocked: Whether to skip features blocked by missing capabilities (default: True)
+    """
     count = max(1, args.get("count", 1))
+    skip_blocked = args.get("skip_blocked", True)  # Default to skipping blocked features
+
     features = await _load_features()
     incomplete = [(i, f) for i, f in enumerate(features) if not f.get("passes", False)]
-    
+
     if not incomplete:
         return {"content": [{"type": "text", "text": "All features complete!"}]}
-        
+
+    # Filter out blocked features if requested
+    skipped_count = 0
+    if skip_blocked:
+        blocked_keywords = await _get_blocked_keywords()
+        filtered = []
+        for idx, feat in incomplete:
+            if _is_feature_blocked(feat, blocked_keywords):
+                skipped_count += 1
+            else:
+                filtered.append((idx, feat))
+        incomplete = filtered
+
+    if not incomplete:
+        return {"content": [{"type": "text", "text": f"No actionable features! ({skipped_count} blocked by missing capabilities)"}]}
+
     lines = [f"NEXT {min(count, len(incomplete))} FEATURE(S)", "="*40]
     for idx, feat in incomplete[:count]:
         lines.append(f"[#{idx}] {feat.get('description', '')[:100]}")
-        
+
+    if skipped_count > 0:
+        lines.append(f"\n({skipped_count} features skipped - blocked by missing capabilities)")
+
     return {"content": [{"type": "text", "text": "\n".join(lines)}]}
 
 @tool("feature_show", "Show feature details.", {"index": int})
@@ -259,12 +293,137 @@ async def feature_mark(args: dict) -> dict:
     status = "PASSING" if passing else "FAILING"
     return {"content": [{"type": "text", "text": f"Marked feature #{idx} as {status}"}]}
 
+@tool("feature_mark_blocked", "Mark features as blocked by missing capability.", {"feature_ids": list, "reason": str})
+async def feature_mark_blocked(args: dict) -> dict:
+    """
+    Mark features as blocked by a missing capability.
+
+    Use this when features require capabilities (like Docker) that are not available.
+
+    Args:
+        feature_ids: List of feature indices to mark as blocked
+        reason: Reason for blocking (e.g., "docker_unavailable", "postgres_unavailable")
+    """
+    feature_ids = args.get("feature_ids", [])
+    reason = args.get("reason", "capability_unavailable")
+
+    if not feature_ids:
+        return {"content": [{"type": "text", "text": "Error: No feature IDs provided"}], "is_error": True}
+
+    session_maker = get_session_maker()
+    blocked_count = 0
+
+    async with session_maker() as session:
+        for fid in feature_ids:
+            result = await session.execute(select(Feature).where(Feature.index == fid))
+            feature = result.scalar_one_or_none()
+            if feature:
+                # Store blocking reason in feature_metadata
+                metadata = feature.feature_metadata or {}
+                metadata["blocked_by_capability"] = reason
+                feature.feature_metadata = metadata
+                blocked_count += 1
+
+        await session.commit()
+
+    return {
+        "content": [{
+            "type": "text",
+            "text": f"Marked {blocked_count} feature(s) as blocked (reason: {reason})"
+        }]
+    }
+
+
+@tool("feature_unblock", "Remove blocked status from features.", {"feature_ids": list})
+async def feature_unblock(args: dict) -> dict:
+    """
+    Remove blocked status from features.
+
+    Use this when a capability becomes available and features can be implemented.
+
+    Args:
+        feature_ids: List of feature indices to unblock (or empty to unblock all)
+    """
+    feature_ids = args.get("feature_ids", [])
+
+    session_maker = get_session_maker()
+    unblocked_count = 0
+
+    async with session_maker() as session:
+        if feature_ids:
+            # Unblock specific features
+            for fid in feature_ids:
+                result = await session.execute(select(Feature).where(Feature.index == fid))
+                feature = result.scalar_one_or_none()
+                if feature:
+                    metadata = feature.feature_metadata or {}
+                    if "blocked_by_capability" in metadata:
+                        del metadata["blocked_by_capability"]
+                        feature.feature_metadata = metadata
+                        unblocked_count += 1
+        else:
+            # Unblock all features (need to check each one)
+            result = await session.execute(select(Feature))
+            features = result.scalars().all()
+            for feature in features:
+                metadata = feature.feature_metadata or {}
+                if "blocked_by_capability" in metadata:
+                    del metadata["blocked_by_capability"]
+                    feature.feature_metadata = metadata
+                    unblocked_count += 1
+
+        await session.commit()
+
+    return {
+        "content": [{
+            "type": "text",
+            "text": f"Unblocked {unblocked_count} feature(s)"
+        }]
+    }
+
+
+@tool("feature_list_blocked", "List features blocked by missing capabilities.", {})
+async def feature_list_blocked(args: dict) -> dict:
+    """List all features that are blocked by missing capabilities."""
+    session_maker = get_session_maker()
+
+    async with session_maker() as session:
+        result = await session.execute(select(Feature))
+        all_features = result.scalars().all()
+
+    # Filter to blocked features
+    blocked_features = []
+    for f in all_features:
+        metadata = f.feature_metadata or {}
+        if metadata.get("blocked_by_capability"):
+            blocked_features.append((f, metadata["blocked_by_capability"]))
+
+    if not blocked_features:
+        return {"content": [{"type": "text", "text": "No blocked features."}]}
+
+    lines = [f"BLOCKED FEATURES ({len(blocked_features)})", "="*40]
+
+    # Group by reason
+    by_reason = {}
+    for feat, reason in blocked_features:
+        if reason not in by_reason:
+            by_reason[reason] = []
+        by_reason[reason].append(feat)
+
+    for reason, features in by_reason.items():
+        lines.append(f"\n[{reason}]")
+        for feat in features:
+            lines.append(f"  #{feat.index}: {feat.description[:60]}")
+
+    return {"content": [{"type": "text", "text": "\n".join(lines)}]}
+
+
 @tool("feature_audit", "Audit feature.", {"index": int, "status": str, "notes": list})
 async def feature_audit(args: dict) -> dict:
     idx = args["index"]
     features = await _load_features()
     if idx < 0 or idx >= len(features): return {"is_error": True}
-    
+
     features[idx]["audit"] = {
         "status": args.get("status"),
         "notes": args.get("notes", []),
@@ -349,6 +508,9 @@ FEATURE_TOOLS = [
     "mcp__features__feature_list",
     "mcp__features__feature_search",
     "mcp__features__feature_mark",
+    "mcp__features__feature_mark_blocked",
+    "mcp__features__feature_unblock",
+    "mcp__features__feature_list_blocked",
     "mcp__features__feature_add",
     "mcp__features__feature_audit",
     "mcp__features__feature_audit_list",
@@ -360,5 +522,18 @@ def create_feature_tools_server(project_dir: Path) -> McpSdkServerConfig:
     return create_sdk_mcp_server(
         name="features",
         version="1.0.0",
-        tools=[feature_stats, feature_next, feature_show, feature_list, feature_search, feature_mark, feature_add, feature_audit, feature_audit_list]
+        tools=[
+            feature_stats,
+            feature_next,
+            feature_show,
+            feature_list,
+            feature_search,
+            feature_mark,
+            feature_mark_blocked,
+            feature_unblock,
+            feature_list_blocked,
+            feature_add,
+            feature_audit,
+            feature_audit_list,
+        ]
     )

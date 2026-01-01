@@ -5,12 +5,129 @@ Security Hooks for Autonomous Coding Agent
 Pre-tool-use hooks that validate bash commands for security.
 Uses an allowlist approach - only explicitly permitted commands can run.
 Supports cross-platform operation (Windows, macOS, Linux).
+
+Also provides risk assessment for auto-checkpoint triggers.
 """
 
 import os
 import shlex
+from typing import Tuple, Optional
 
 from arcadiaforge.platform_utils import detect_os, OSType, get_platform_info
+from arcadiaforge.error_context import enhance_error_message, get_tool_suggestion
+
+
+# =============================================================================
+# Auto-Checkpoint Triggers
+# =============================================================================
+
+# Commands that should trigger an automatic checkpoint before execution
+# These are potentially destructive or irreversible operations
+CHECKPOINT_TRIGGERS = {
+    # Git operations that could lose work
+    "git push": "before_push",
+    "git reset": "before_reset",
+    "git revert": "before_revert",
+    "git checkout -f": "before_force_checkout",
+    "git clean": "before_clean",
+    "git stash drop": "before_stash_drop",
+    "git branch -D": "before_branch_delete",
+    "git branch -d": "before_branch_delete",
+
+    # Destructive file operations
+    "rm -rf": "before_destructive",
+    "rm -r": "before_destructive",
+    "rmdir /s": "before_destructive",  # Windows
+    "del /s": "before_destructive",  # Windows
+
+    # Database operations
+    "drop table": "before_destructive_db",
+    "drop database": "before_destructive_db",
+    "truncate": "before_destructive_db",
+    "delete from": "before_destructive_db",
+
+    # Package operations that modify project
+    "npm uninstall": "before_uninstall",
+    "pip uninstall": "before_uninstall",
+}
+
+
+def should_checkpoint_before(command: str) -> Tuple[bool, Optional[str]]:
+    """
+    Check if a command should trigger an automatic checkpoint before execution.
+
+    This allows recovery if the command causes problems.
+
+    Args:
+        command: The bash command to check
+
+    Returns:
+        Tuple of (should_checkpoint, reason) where reason describes why
+    """
+    command_lower = command.lower()
+
+    for trigger, reason in CHECKPOINT_TRIGGERS.items():
+        if trigger in command_lower:
+            return True, reason
+
+    return False, None
+
+
+def get_command_risk_level(command: str) -> str:
+    """
+    Assess the risk level of a command.
+
+    Args:
+        command: The bash command to assess
+
+    Returns:
+        Risk level: "low", "medium", "high", or "critical"
+    """
+    command_lower = command.lower()
+
+    # Critical: Could corrupt project or lose work permanently
+    critical_patterns = [
+        "rm -rf /",
+        "rm -rf ~",
+        "rm -rf .",
+        "git push --force",
+        "git push -f",
+        "drop database",
+        "format",
+    ]
+    for pattern in critical_patterns:
+        if pattern in command_lower:
+            return "critical"
+
+    # High: Destructive but recoverable
+    high_patterns = [
+        "rm -rf",
+        "rm -r",
+        "git reset --hard",
+        "git clean -fd",
+        "drop table",
+        "truncate",
+        "delete from",
+    ]
+    for pattern in high_patterns:
+        if pattern in command_lower:
+            return "high"
+
+    # Medium: Modifies state but usually safe
+    medium_patterns = [
+        "git push",
+        "git reset",
+        "npm uninstall",
+        "pip uninstall",
+        "git checkout",
+        "git stash",
+    ]
+    for pattern in medium_patterns:
+        if pattern in command_lower:
+            return "medium"
+
+    # Low: Normal operations
+    return "low"
 
 
 # =============================================================================
@@ -51,6 +168,8 @@ _COMMON_COMMANDS = {
     # Other
     "curl",
     "echo",
+    "ping",
+    "uvicorn",
 }
 
 # Windows-specific commands
@@ -739,6 +858,14 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
         commands_needing_validation,
     )
     if not allowed:
-        return {"decision": "block", "reason": reason}
+        # Enhance error message with helpful suggestions
+        enhanced_reason = enhance_error_message(reason, {"command": command})
+
+        # Add tool suggestion if a shell command failed
+        tool_suggestion = get_tool_suggestion(command)
+        if tool_suggestion and tool_suggestion not in enhanced_reason:
+            enhanced_reason += f"\n\n💡 {tool_suggestion}"
+
+        return {"decision": "block", "reason": enhanced_reason}
 
     return {}

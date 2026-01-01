@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Optional
 
 from arcadiaforge.client import create_client
+from arcadiaforge.project_analyzer import analyze_project, analyze_project_smart, ProjectAnalysis, get_agent_context
 from arcadiaforge.artifact_store import ArtifactStore
+from arcadiaforge.capabilities import check_capabilities, CapabilityChecker
 from arcadiaforge.checkpoint import CheckpointManager, CheckpointTrigger, SessionPauseManager, format_paused_session
 from arcadiaforge.decision import DecisionLogger, DecisionType
 from arcadiaforge.escalation import EscalationEngine, EscalationContext
@@ -24,10 +26,15 @@ from arcadiaforge.failure_analysis import FailureAnalyzer
 from arcadiaforge.observability import Observability, EventType, format_metrics_summary
 from arcadiaforge.autonomy import AutonomyManager, AutonomyLevel, AutonomyConfig
 from arcadiaforge.risk import RiskClassifier
+from arcadiaforge.stall_detection import StallDetectionManager, create_stall_manager, StallStatus
 from arcadiaforge.intervention_learning import InterventionLearner, InterventionType as LearningInterventionType
 from arcadiaforge.feature_tools import set_checkpoint_manager, update_session_id, set_artifact_store
-from arcadiaforge.process_tools import set_session_id as set_process_session_id
+from arcadiaforge.process_tools import set_session_id as set_process_session_id, cleanup_previous_processes
+from arcadiaforge.server_tools import set_session_id as set_server_session_id
 from arcadiaforge.feature_list import generate_status_file, FeatureList
+from arcadiaforge.session_state import SessionStateManager, SessionState
+from arcadiaforge.security import should_checkpoint_before
+from arcadiaforge.web.dashboard import log_activity, broadcast_update, get_dashboard
 from arcadiaforge.progress import print_session_header, print_progress_summary, count_passing_tests, print_final_summary
 from arcadiaforge.prompts import (
     get_initializer_prompt,
@@ -117,6 +124,11 @@ class SessionOrchestrator:
         self.hypothesis_tracker: Optional[HypothesisTracker] = None
         self.process_tracker: Optional[ProcessTracker] = None
         self.live_terminal: Optional[LiveTerminal] = None
+        self.capability_checker: Optional[CapabilityChecker] = None
+        self.stall_manager: Optional[StallDetectionManager] = None
+        self.session_state_manager: Optional[SessionStateManager] = None
+        self._recovery_context: Optional[str] = None  # Recovery prompt for crashed sessions
+        self.project_analysis: Optional[ProjectAnalysis] = None  # Tool selection based on project type
 
     def setup(self):
         """Initialize all subsystems and components."""
@@ -174,6 +186,10 @@ class SessionOrchestrator:
         else:
             print_info("Process tracker enabled")
 
+        # Initialize session state manager for crash recovery
+        self.session_state_manager = SessionStateManager(self.project_dir)
+        self._check_crash_recovery()
+
         # Initialize live terminal if enabled
         if self.enable_live_terminal:
             self.live_terminal = LiveTerminal(
@@ -219,6 +235,72 @@ class SessionOrchestrator:
                 if resumed.human_notes:
                     print_info(f"Human notes: {resumed.human_notes}")
 
+    def _check_crash_recovery(self):
+        """Check for crashed session and prepare recovery context."""
+        if not self.session_state_manager:
+            return
+
+        recovered_state = self.session_state_manager.check_for_crash_recovery()
+        if recovered_state:
+            print_warning(f"Detected crashed session (iteration {recovered_state.iteration})")
+            print_info(f"  Last tool: {recovered_state.last_tool or 'unknown'}")
+            print_info(f"  Recovery attempt: {recovered_state.recovery_attempt}")
+
+            if recovered_state.current_feature is not None:
+                print_info(f"  Working on feature: #{recovered_state.current_feature}")
+
+            if recovered_state.completed_this_session:
+                print_info(f"  Completed before crash: {recovered_state.completed_this_session}")
+
+            # Store recovery context for injection into prompts
+            self._recovery_context = recovered_state.get_recovery_prompt()
+
+            # Log the recovery
+            if self.obs:
+                self.obs.log_event(
+                    EventType.WARNING,
+                    data={
+                        "message": "Crash recovery initiated",
+                        "previous_session": recovered_state.session_id,
+                        "previous_iteration": recovered_state.iteration,
+                        "last_tool": recovered_state.last_tool,
+                        "recovery_attempt": recovered_state.recovery_attempt,
+                    }
+                )
+
+    def _maybe_checkpoint_before_tool(self, tool_name: str, tool_input: dict):
+        """
+        Create checkpoint before risky operations.
+
+        Called before tool execution to save state if the tool is potentially
+        destructive or irreversible.
+        """
+        if tool_name != "Bash":
+            return
+
+        command = tool_input.get("command", "")
+        should_checkpoint, reason = should_checkpoint_before(command)
+
+        if should_checkpoint and self.checkpoint_mgr:
+            try:
+                checkpoint = self.checkpoint_mgr.create_checkpoint(
+                    trigger=CheckpointTrigger.BEFORE_RISKY_OP,
+                    session_id=self.iteration,
+                    metadata={
+                        "reason": reason,
+                        "command": command[:100],  # Truncate long commands
+                    },
+                    human_note=f"Auto-checkpoint before: {reason}",
+                )
+                print_info(f"Auto-checkpoint created before risky operation: {reason}")
+
+                # Record in session state
+                if self.session_state_manager:
+                    self.session_state_manager.record_checkpoint(checkpoint.checkpoint_id)
+
+            except Exception as e:
+                print_warning(f"Could not create pre-operation checkpoint: {e}")
+
     async def run(
         self,
         new_requirements_path: Optional[Path] = None,
@@ -240,6 +322,18 @@ class SessionOrchestrator:
         print_config(self.project_dir, self.model, self.max_iterations, extra_config)
         self.setup()
 
+        # Initialize capability checker (after database is ready)
+        self.capability_checker = await check_capabilities(self.project_dir)
+        self.capability_checker.print_status()
+
+        # Initialize stall detection manager
+        self.stall_manager = create_stall_manager(
+            project_dir=self.project_dir,
+            stall_threshold=5,  # Escalate after 5 consecutive no-progress sessions
+            human_interface=self.human_interface,
+        )
+        print_info("Stall detection enabled (threshold: 5 sessions)")
+
         # Check project state
         # Check for features in database or legacy JSON file
         feature_list = FeatureList(self.project_dir)
@@ -256,6 +350,9 @@ class SessionOrchestrator:
             if num_new_features:
                 config_file = self.project_dir / "update_config.txt"
                 config_file.write_text(f"NUM_NEW_FEATURES={num_new_features}\n")
+            # Analyze project for tool selection (uses agent for smart detection)
+            if self.project_analysis is None:
+                self.project_analysis = await analyze_project_smart(self.project_dir)
             print_progress_summary(self.project_dir)
         elif is_first_run:
             if new_requirements_path:
@@ -263,7 +360,13 @@ class SessionOrchestrator:
                 return
             print_initializer_info()
             copy_spec_to_project(self.project_dir, app_spec_path)
+
+            # Analyze project spec to determine tool requirements (uses agent for smart detection)
+            self.project_analysis = await analyze_project_smart(self.project_dir)
         else:
+            # For existing projects, also analyze if not already done
+            if self.project_analysis is None:
+                self.project_analysis = await analyze_project_smart(self.project_dir)
             print_info("Continuing existing project")
             print_progress_summary(self.project_dir)
 
@@ -289,6 +392,16 @@ class SessionOrchestrator:
             # Start memory session
             self.memory_manager.start_session()
 
+            # Set stall detection baseline for this session
+            if self.stall_manager:
+                current_passing, _ = count_passing_tests(self.project_dir)
+                git_hash = get_git_status_hash(self.project_dir)
+                self.stall_manager.set_session_baseline(
+                    session_id=self.iteration,
+                    passing_count=current_passing,
+                    git_hash=git_hash,
+                )
+
             # Check termination conditions
             if self.max_iterations and self.iteration > self.max_iterations:
                 self.obs.log_event(EventType.WARNING, data={"message": f"Reached max iterations ({self.max_iterations})"})
@@ -305,21 +418,36 @@ class SessionOrchestrator:
                 if should_break:
                     break
 
+            # Clean up lingering processes from previous sessions
+            cleanup_previous_processes(self.project_dir, self.iteration)
+
             print_session_header(self.iteration, is_first_run)
-            
+
             session_type = "initializer" if is_first_run else ("update" if is_update_run else "coding")
             self.obs.start_session(self.iteration)
+
+            # Initialize session state for this iteration
+            if self.session_state_manager:
+                self.session_state_manager.initialize_state(
+                    session_id=self.iteration,
+                    iteration=self.iteration,
+                    session_type=session_type,
+                )
+
+            # Notify dashboard of session start
+            log_activity("session_start", f"Session #{self.iteration} started ({session_type})")
             
             self._log_session_start_decision(session_type)
             update_session_id(self.iteration)
             self.human_interface.update_session_id(self.iteration)
             set_process_session_id(self.iteration)
+            set_server_session_id(self.iteration)
             
             self._create_session_checkpoint(session_type)
             generate_status_file(self.project_dir, self.iteration)
             copy_feature_tool_to_project(self.project_dir)
 
-            client = create_client(self.project_dir, self.model)
+            client = create_client(self.project_dir, self.model, self.project_analysis)
             prompt = self._get_prompt(session_type, is_first_run, is_update_run)
             
             # One-time flags reset
@@ -485,11 +613,19 @@ class SessionOrchestrator:
 
     def _get_prompt(self, session_type: str, is_first_run: bool, is_update_run: bool) -> str:
         if is_update_run:
-            return get_update_features_prompt()
+            prompt = get_update_features_prompt()
         elif is_first_run:
-            return get_initializer_prompt()
+            prompt = get_initializer_prompt()
         else:
-            return get_coding_prompt()
+            prompt = get_coding_prompt()
+
+        # Inject recovery context if recovering from a crash
+        if self._recovery_context:
+            prompt = self._recovery_context + "\n\n---\n\n" + prompt
+            # Clear recovery context after using it once
+            self._recovery_context = None
+
+        return prompt
 
     def _update_history(self, result):
         for error_text in result.error_texts:
@@ -516,10 +652,10 @@ class SessionOrchestrator:
 
     def _handle_complete(self, result):
         self.obs.end_session(session_id=self.iteration, status="completed", reason=result.reason)
-        
+
         current_passing, _ = count_passing_tests(self.project_dir)
         previous_passing = self.history.passing_counts[-2] if len(self.history.passing_counts) >= 2 else 0
-        
+
         self.memory_manager.end_session(
             ending_state="completed",
             features_started=1,
@@ -533,7 +669,17 @@ class SessionOrchestrator:
             )
         except Exception as e:
             print_warning(f"Could not create completion checkpoint: {e}")
-            
+
+        # Clear session state on successful completion (no recovery needed)
+        if self.session_state_manager:
+            self.session_state_manager.clear()
+
+        # Notify dashboard of session completion
+        log_activity("session_end", f"Session #{self.iteration} completed: {result.reason}", {
+            "passing": current_passing,
+            "gained": current_passing - previous_passing,
+        })
+
         print_status_complete()
         print_progress_summary(self.project_dir)
         self._print_session_metrics()
@@ -574,6 +720,28 @@ class SessionOrchestrator:
         made_progress = made_test_progress or made_git_progress
 
         if not made_progress:
+            # Check stall detection (show warning but continue per user preference)
+            if self.stall_manager:
+                stall_status = await self.stall_manager.check_progress(
+                    current_passing=current_passing,
+                    current_git_hash=git_hash,
+                )
+                if stall_status.should_escalate:
+                    # Display stall warning but continue running
+                    await self.stall_manager.escalate_to_human(stall_status)
+                    self.decision_logger.log_decision(
+                        session_id=self.iteration,
+                        decision_type=DecisionType.ESCALATION,
+                        context=f"Stall detected: {stall_status.message}",
+                        choice="continue_with_warning",
+                        alternatives=["stop", "skip_features", "continue"],
+                        rationale="User preference: continue with warning on stall",
+                        confidence=0.3,
+                        inputs_consulted=["stall_detection", "session_history"],
+                    )
+                elif stall_status.is_stalled:
+                    print_warning(f"Stall warning: {stall_status.message}")
+
             # Check escalation
             escalation_context = EscalationContext(
                 confidence=0.5,
@@ -620,6 +788,22 @@ class SessionOrchestrator:
         else:
              if made_test_progress:
                 print_info(f"Progress: {previous_passing} -> {current_passing} tests passing")
+
+        # Update session state with current progress
+        if self.session_state_manager:
+            self.session_state_manager.update_progress(
+                tests_passing=current_passing,
+                tests_total=total_tests,
+                git_hash=git_hash,
+            )
+
+        # Notify dashboard of progress
+        if made_test_progress:
+            log_activity("feature_complete", f"Progress: {previous_passing} -> {current_passing} features", {
+                "passing": current_passing,
+                "total": total_tests,
+                "gained": current_passing - previous_passing,
+            })
 
         self.obs.end_session(session_id=self.iteration, status="continue", reason=f"Progress: {current_passing}/{total_tests} tests passing")
         
@@ -672,7 +856,7 @@ class SessionOrchestrator:
             print_info(f"Running audit on {len(candidates)} features...")
             self.obs.log_event(EventType.DECISION, data={"decision_type": "audit", "choice": "run_audit", "candidates": candidates})
             audit_prompt = get_audit_prompt(candidates, regressions)
-            audit_client = create_client(self.project_dir, self.model)
+            audit_client = create_client(self.project_dir, self.model, self.project_analysis)
             async with audit_client:
                 await run_agent_session(
                     audit_client,
@@ -712,6 +896,19 @@ class SessionOrchestrator:
     async def _print_final_results(self):
         passing, total = count_passing_tests(self.project_dir)
         print_final_summary(self.project_dir, passing, total)
+
+        # Clean up any lingering processes from all sessions
+        from arcadiaforge.process_tracker import ProcessTracker
+        tracker = ProcessTracker(self.project_dir)
+        running = tracker.get_running()
+        if running:
+            print_info(f"Cleaning up {len(running)} background process(es)...")
+            killed, failed = tracker.kill_all(force=False)
+            if killed > 0:
+                print_success(f"Stopped {killed} process(es)")
+            if failed > 0:
+                print_warning(f"Failed to stop {failed} process(es)")
+
         try:
             metrics = await self.obs.get_run_metrics()
             console.print()

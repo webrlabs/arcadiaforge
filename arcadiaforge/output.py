@@ -58,6 +58,7 @@ class ArcadiaColors:
     ok: str = "#22C55E"        # success green
     warn: str = "#FBBF24"      # warning yellow
     err: str = "#EF4444"       # error red
+    thought: str = "#A78BFA"   # purple for thoughts
 
 
 def arcadia_theme(colors: ArcadiaColors = ArcadiaColors()) -> Theme:
@@ -82,6 +83,7 @@ def arcadia_theme(colors: ArcadiaColors = ArcadiaColors()) -> Theme:
             "af.warn": f"bold {colors.warn}",
             "af.err": f"bold {colors.err}",
             "af.info": f"{colors.arc}",
+            "af.thought": f"italic {colors.thought}",
 
             # Data display
             "af.key": f"{colors.steel}",
@@ -194,6 +196,7 @@ def _sanitize_text(text: str) -> str:
         '\U0001F4C1': '[D]', # 📁 folder
         '\U0001F4C4': '[F]', # 📄 page
         '\U0001F500': '[G]', # 🔀 shuffle (git)
+        '\U0001F4AD': '(?)', # 💭 thought
     }
 
     for emoji, replacement in emoji_map.items():
@@ -238,6 +241,7 @@ _UNICODE_ICONS = {
     "tag": "\U0001F3F7",
     "star": "\u2B50",
     "spinner": "\u23F3",
+    "thought": "\U0001F4AD",
 }
 
 _ASCII_ICONS = {
@@ -249,7 +253,7 @@ _ASCII_ICONS = {
     "cross": "[X]",
     "blocked": "[BLOCKED]",
     "party": "***",
-    "warning": "[!]",
+    "warning": "[!",
     "info": "[i]",
     "bar_filled": "#",
     "bar_empty": "-",
@@ -260,8 +264,9 @@ _ASCII_ICONS = {
     "file": "[F]",
     "git": "[G]",
     "tag": "[#]",
-    "star": "[*]",
+    "star": "[*",
     "spinner": "[...]",
+    "thought": "(?)",
 }
 
 _USE_UNICODE = _can_use_unicode()
@@ -354,6 +359,15 @@ def print_muted(message: str) -> None:
     """Print muted/secondary text."""
     console.print(f"[af.muted]{message}[/]")
 
+def print_agent_thought(message: str) -> None:
+    """Print an agent thought bubble."""
+    # Strip whitespace but preserve some formatting
+    text = message.strip()
+    if not text:
+        return
+    
+    # Prefix with thought bubble icon
+    console.print(f"[af.thought]{icon('thought')} {text}[/]")
 
 # =============================================================================
 # Headers & Sections
@@ -797,11 +811,11 @@ def multi_select(
 
 ARCADIA_FORGE_BANNER = r"""
       _                        _ _       ______
-     / \   _ __ ___ __ _   ___| (_) __ _|  ____|__  _ __ __ _  ___
+     / \   _ __ ___ __ _   ___| (_) __ _|  ____|__  _ __ __ _  ___ 
     / _ \ | '__/ __/ _` | / _ | | |/ _` | |__ / _ \| '__/ _` |/ _ \
    / ___ \| | | (_| (_| || (_)| | | (_| |  __| (_) | | | (_| |  __/
   /_/   \_\_|  \___\__,_| \___|_|_|\__,_|_|   \___/|_|  \__, |\___|
-                                                        |___/
+                                                        |___/ 
 """.rstrip("\n")
 
 
@@ -900,7 +914,7 @@ def print_status_intervention(reason: str) -> None:
     """Print intervention required status."""
     console.print()
     print_warning_panel(
-        f"HUMAN INTERVENTION REQUIRED\n\n"
+        f"HUMAN INTERVENTION REQUIRED\n\n" 
         f"Reason: {reason}\n\n"
         "Please review the output above and address the issue.\n"
         "To resume, run the script again after fixing the problem.",
@@ -980,7 +994,7 @@ def print_final_summary(project_dir: Path, passing: int, total: int) -> None:
             f"  [af.info]Command Prompt:[/]\n"
             f"  init.bat\n\n"
             f"  [af.info]PowerShell:[/]\n"
-            f"  powershell -ExecutionPolicy Bypass -File .\\init.ps1\n\n"
+            + r"  powershell -ExecutionPolicy Bypass -File .\init.ps1" + "\n\n"
             f"[af.muted]Or manually: npm install && npm run dev[/]"
         )
     else:
@@ -1209,11 +1223,12 @@ def print_tool_result(result_type: str, content: str = "") -> None:
 
 def print_agent_text(text: str) -> None:
     """Print agent response text."""
-    if not _VERBOSE:
-        return
+    # Always print thoughts now, even if not verbose
     # Sanitize to handle emoji from LLM responses on Windows
     safe_text = _sanitize_text(text)
-    console.print(safe_text, end="", highlight=False)
+    
+    # We want to format this as a thought block
+    print_agent_thought(safe_text)
 
 
 def print_update_mode_info(num_features: Optional[int] = None) -> None:
@@ -1280,12 +1295,14 @@ def setup_rich_logging(level: int = logging.INFO) -> None:
         level=level,
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[RichHandler(
-            console=console,
-            show_path=False,
-            markup=True,
-            rich_tracebacks=True,
-        )],
+        handlers=[
+            RichHandler(
+                console=console,
+                show_path=False,
+                markup=True,
+                rich_tracebacks=True,
+            )
+        ],
     )
 
 

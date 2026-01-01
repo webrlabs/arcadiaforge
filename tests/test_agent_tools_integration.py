@@ -76,7 +76,7 @@ You are testing the Arcadia Forge MCP tools. Your task is to systematically test
 
 ## Your Task
 
-1. First, create a simple feature_list.json file with 3 test features
+1. First, add 3 test features to the database using the feature_add tool
 2. Test each tool category systematically
 3. For each tool, call it and verify it returns a reasonable response
 4. Report any errors or unexpected behavior
@@ -88,7 +88,7 @@ You are testing the Arcadia Forge MCP tools. Your task is to systematically test
 - Do NOT test process_stop or process_stop_all with real PIDs unless you tracked them first
 - For process_find_port, test with a common port like 3000 or 8080
 
-Start by creating the test feature_list.json, then test each tool category.
+Start by adding the test features to the database, then test each tool category.
 """
 
 

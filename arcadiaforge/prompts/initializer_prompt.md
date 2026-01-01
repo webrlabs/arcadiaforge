@@ -13,40 +13,24 @@ before proceeding.
 
 {{FILESYSTEM_CONSTRAINTS}}
 
-### CRITICAL FIRST TASK: Create feature_list.json (for database import)
+### CRITICAL FIRST TASK: Populate the features database
 
-Based on `app_spec.txt`, create a file called `feature_list.json` with 200 detailed
-end-to-end test cases. This file will be automatically imported into the database
-when the system starts. After import, all feature data is stored in the database
+Based on `app_spec.txt`, add ~200 detailed end-to-end test cases directly to the
+database using the `feature_add` tool. All feature data lives in the database
 at `.arcadia/project.db`.
 
-**Format:**
-```json
-[
-  {
-    "category": "functional",
-    "description": "Brief description of the feature and what this test verifies",
-    "steps": [
-      "Step 1: Navigate to relevant page",
-      "Step 2: Perform action",
-      "Step 3: Verify expected result"
-    ],
-    "passes": false
-  },
-  {
-    "category": "style",
-    "description": "Brief description of UI/UX requirement",
-    "steps": [
-      "Step 1: Navigate to page",
-      "Step 2: Take screenshot",
-      "Step 3: Verify visual requirements"
-    ],
-    "passes": false
-  }
-]
+**Feature structure (for feature_add tool):**
+```
+feature_add with:
+  category: "functional"
+  description: "Brief description of the feature and what this test verifies"
+  steps:
+    - "Step 1: Navigate to relevant page"
+    - "Step 2: Perform action"
+    - "Step 3: Verify expected result"
 ```
 
-**Requirements for feature_list.json:**
+**Requirements for the initial feature set:**
 - Minimum 200 features total with testing steps for each
 - Both "functional" and "style" categories
 - Mix of narrow tests (2-5 steps) and comprehensive tests (10+ steps)
@@ -61,7 +45,7 @@ Features can ONLY be marked as passing using the `feature_mark` tool.
 Never remove features, never edit descriptions, never modify testing steps.
 This ensures no functionality is missed.
 
-**NOTE:** After initial import, all feature management is done via the database.
+**NOTE:** All feature management is done via the database.
 Use the feature tools (`feature_stats`, `feature_next`, `feature_mark`, etc.)
 to interact with features - they read from and write to the database.
 
@@ -94,7 +78,6 @@ __pycache__/
 ```
 
 Create a git repository and make your first commit with:
-- feature_list.json (complete with all 200+ features)
 {{INIT_SCRIPT_FILES_LIST}}
 - README.md (project overview and setup instructions)
 - .gitignore
@@ -110,7 +93,7 @@ components mentioned in the spec.
 ### OPTIONAL: Start Implementation
 
 If you have time remaining in this session, you may begin implementing
-the highest-priority features from feature_list.json. Remember:
+the highest-priority features from the database. Remember:
 - Work on ONE feature at a time
 - Test thoroughly before marking "passes": true
 - Commit your progress before session ends
@@ -122,12 +105,12 @@ Before your context fills up:
 2. Log progress using `progress_add` tool (stores in database):
    ```
    progress_add with:
-     accomplished: ["Created feature_list.json with 200+ features", "Set up project structure", ...]
+     accomplished: ["Added 200+ features to the database", "Set up project structure", ...]
      tests_status: "0/200 passing"
      next_steps: ["Begin implementing first feature", "Set up development environment"]
      notes: "Initial project setup complete"
    ```
-3. Ensure feature_list.json is complete and saved (will be imported to database on next run)
+3. Ensure the database contains the full feature set
 4. Leave the environment in a clean, working state
 
 The next agent will continue from here with a fresh context window.
@@ -140,7 +123,7 @@ You have access to the following tools. **Use the right tool for the job:**
 
 ### File Operations (PREFERRED over Bash for files)
 - `Read` - Read file contents. **Always use this instead of `cat`**
-- `Write` - Write/create files (use for creating feature_list.json, init.sh, etc.)
+- `Write` - Write/create files (use for creating init.sh, etc.)
 - `Edit` - Edit existing files (find and replace)
 - `Glob` - Find files by pattern (e.g., `*.py`, `**/*.json`)
 - `Grep` - Search file contents for patterns

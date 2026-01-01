@@ -715,3 +715,97 @@ class TroubleshootingEntry(Base):
     solution: Mapped[str] = mapped_column(Text)
     steps_to_fix: Mapped[List[str]] = mapped_column(JSON, default=list)
     prevention: Mapped[str] = mapped_column(Text, default="")
+
+
+# =============================================================================
+# Agent Communication Tables (cross-session messaging)
+# =============================================================================
+
+class AgentMessage(Base):
+    """
+    Messages for cross-session agent communication.
+
+    Allows agents to leave messages, warnings, hints, and handoff notes
+    for future sessions to read.
+    """
+    __tablename__ = "agent_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    message_id: Mapped[str] = mapped_column(String(50), unique=True, index=True)  # "MSG-{session}-{seq}"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_by_session: Mapped[int] = mapped_column(Integer, index=True)
+
+    # Message classification
+    message_type: Mapped[str] = mapped_column(String(20), index=True)  # warning, hint, blocker, discovery, handoff
+    priority: Mapped[int] = mapped_column(Integer, default=3)  # 1=critical, 2=high, 3=normal, 4=low, 5=info
+
+    # Content
+    subject: Mapped[str] = mapped_column(String(255))
+    body: Mapped[str] = mapped_column(Text)
+
+    # Context
+    related_features: Mapped[List[int]] = mapped_column(JSON, default=list)
+    tags: Mapped[List[str]] = mapped_column(JSON, default=list)
+
+    # Read tracking (persists indefinitely until acknowledged)
+    read_by_sessions: Mapped[List[int]] = mapped_column(JSON, default=list)
+    acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
+    acknowledged_by_session: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SystemCapability(Base):
+    """
+    Tracks available system capabilities (docker, node, git, etc.).
+
+    Checked at startup and cached in database for agent queries.
+    """
+    __tablename__ = "system_capabilities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    capability_name: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+
+    # Availability
+    is_available: Mapped[bool] = mapped_column(Boolean, default=False)
+    version: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # Check status
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Additional details (JSON blob for flexibility)
+    details: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class StallRecord(Base):
+    """
+    Tracks stall detection across sessions.
+
+    Records when progress stalls and tracks resolution.
+    """
+    __tablename__ = "stall_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    session_id: Mapped[int] = mapped_column(Integer, index=True)
+
+    # Stall classification
+    stall_type: Mapped[str] = mapped_column(String(30), index=True)  # no_progress, cyclic, capability_missing
+
+    # Progress tracking
+    consecutive_sessions: Mapped[int] = mapped_column(Integer, default=1)
+    last_passing_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_git_hash: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+
+    # Blocker info
+    blocked_on: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Description of what's blocking
+    blocked_features: Mapped[List[int]] = mapped_column(JSON, default=list)
+    missing_capability: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    # Resolution
+    escalated: Mapped[bool] = mapped_column(Boolean, default=False)
+    escalated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

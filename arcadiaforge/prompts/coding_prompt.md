@@ -43,6 +43,32 @@ Start by orienting yourself using the proper tools:
 Understanding the `app_spec.txt` is critical - it contains the full requirements
 for the application you're building.
 
+### STEP 2: CHECK FOR MESSAGES AND CAPABILITIES
+
+Before starting work, check for messages from previous sessions and verify system capabilities:
+
+1. **Check for agent messages** (important communications from previous sessions):
+   ```
+   message_list
+   ```
+   This shows warnings, hints, blockers, and handoff notes from previous sessions.
+   - **Read important messages** with `message_read` using the message_id
+   - **Acknowledge handled messages** with `message_acknowledge`
+
+2. **Verify system capabilities** (what tools are available):
+   ```
+   capability_list
+   ```
+   This shows which system tools (Docker, Git, etc.) are available.
+   - If a feature requires Docker and Docker isn't available, skip that feature
+   - Use `capability_check` with a capability name to check a specific tool
+
+3. **If you find blocker messages or missing capabilities:**
+   - Skip features that require unavailable capabilities
+   - Use `feature_mark_blocked` with feature_ids and reason to mark them blocked
+   - Use `feature_next` with skip_blocked=True (default) to get only actionable features
+   - Use `capability_request_help` if you need human assistance
+
 {{FILESYSTEM_CONSTRAINTS}}
 
 {{RUN_INIT_INSTRUCTIONS}}
@@ -166,14 +192,35 @@ progress_add with:
   next_steps: ["Implement logout functionality", "Add password reset"]
 ```
 
-### STEP 10: END SESSION CLEANLY
+### STEP 10: LEAVE HANDOFF MESSAGE
+
+Before ending the session, leave a structured handoff message for the next session:
+
+```
+message_handoff with:
+  current_work: "What you were working on"
+  progress_made: "What progress was made"
+  blockers: "Any blockers remaining (optional)"
+  recommended_next: "Recommended next steps"
+  warnings: ["Important warnings for next session"]
+  related_features: [feature indices you worked on]
+```
+
+**Also send targeted messages if needed:**
+- Use `message_send` with type="warning" for things the next session should avoid
+- Use `message_send` with type="blocker" for issues blocking progress
+- Use `message_send` with type="hint" for helpful tips
+- Use `message_send` with type="discovery" for important findings
+
+### STEP 11: END SESSION CLEANLY
 
 Before context fills up:
 1. Commit all working code
 2. Log progress with `progress_add` (Step 9)
-3. Mark completed features with `feature_mark`
-4. Ensure no uncommitted changes
-5. Leave app in working state (no broken features)
+3. Leave handoff message with `message_handoff` (Step 10)
+4. Mark completed features with `feature_mark`
+5. Ensure no uncommitted changes
+6. Leave app in working state (no broken features)
 
 ---
 
@@ -193,6 +240,32 @@ You have access to the following tools. **Use the right tool for the job:**
   - Use for: git operations, running servers, installing packages
   - **Don't use for:** reading files (use Read), finding files (use Glob)
 
+### Cross-Platform File Operations (USE THESE, NOT SHELL COMMANDS)
+**IMPORTANT:** Use these tools instead of shell commands like `cp`, `mv`, `rm`, `mkdir -p`, or `ls -t`.
+These tools work identically on Windows, macOS, and Linux.
+
+- `file_copy` - Copy files/directories (replaces `cp` and `copy`)
+  - `file_copy` with src="path/to/source", dest="path/to/dest"
+- `file_move` - Move files/directories (replaces `mv` and `move`)
+- `file_delete` - Delete files/directories (replaces `rm` and `del`)
+  - Use `recursive=true` for non-empty directories
+- `file_latest` - Get most recent file matching pattern (replaces `ls -t | head -1`)
+  - `file_latest` with directory="screenshots", pattern="*.png"
+- `file_ensure_dir` - Create directory if needed (replaces `mkdir -p`)
+- `file_exists` - Check if path exists (replaces `test -e`)
+- `file_list` - List directory contents (replaces `ls` and `dir`)
+- `file_glob` - Find files by pattern (replaces `find` with patterns)
+
+**Example - Save latest screenshot:**
+```
+# DON'T do this (fails on Windows):
+# cp $(ls -t screenshots/*.png | head -1) verification/evidence.png
+
+# DO this instead:
+latest = file_latest with directory="screenshots", pattern="*.png"
+file_copy with src=latest.path, dest="verification/evidence.png"
+```
+
 ### Browser Automation (for testing)
 - `puppeteer_navigate` - Open URL in browser
 - `puppeteer_screenshot` - Capture screenshot (auto-saved to disk)
@@ -203,13 +276,72 @@ You have access to the following tools. **Use the right tool for the job:**
 - `puppeteer_hover` - Hover over elements
 - `puppeteer_evaluate` - Execute JavaScript (use sparingly)
 
+### Browser Selector Helpers (for clicking by text)
+**IMPORTANT:** The `:has-text()` pseudo-selector is NOT supported by Puppeteer.
+Use these helpers instead to click elements by their text content.
+
+- `browser_click_text` - Click an element containing specific text
+  - Returns JavaScript to execute via `puppeteer_evaluate`
+  - `browser_click_text` with text="Delete", element_type="button,a"
+- `browser_find_elements` - Find elements matching selector with optional text filter
+  - `browser_find_elements` with selector="button", text_filter="Submit"
+- `browser_wait_and_click` - Wait for element with text and click it
+  - `browser_wait_and_click` with text="Confirm", timeout_ms=5000
+- `browser_fill_by_label` - Fill input by its label text
+  - `browser_fill_by_label` with label_text="Username", value="testuser"
+- `browser_get_text` - Get text content from elements
+- `browser_table_data` - Extract data from HTML tables
+
+**Example - Click a Delete button by text:**
+```
+# DON'T do this (syntax error - :has-text not supported):
+# puppeteer_click with selector='button:has-text("Delete")'
+
+# DO this instead:
+script = browser_click_text with text="Delete"
+puppeteer_evaluate with script=script.script
+```
+
+### Evidence Management (for feature verification)
+Use these tools to manage verification screenshots as evidence for features.
+
+- `evidence_set_context` - Set context for next screenshot (auto-names and saves to verification/)
+  - `evidence_set_context` with feature_id=107, auto_save=true
+  - Then call `puppeteer_screenshot` - it will auto-save as evidence
+- `evidence_save` - Save a screenshot as evidence (uses latest if no source specified)
+  - `evidence_save` with feature_id=107
+  - `evidence_save` with feature_id=107, source_screenshot="screenshots/my_shot.png"
+- `evidence_list` - List all evidence files
+  - `evidence_list` - returns all evidence
+  - `evidence_list` with feature_ids=[105, 106, 107] - filter by features
+- `evidence_get_latest` - Get recent screenshots for review
+
+**Recommended verification workflow:**
+```
+1. evidence_set_context with feature_id=107, description="Login success"
+2. puppeteer_screenshot  # Auto-saved as feature_107_evidence.png
+3. feature_mark with index=107  # Mark feature as passing
+```
+
 ### Feature Management (for tracking test progress)
 - `feature_stats` - Get completion statistics (total, passing, failing by category)
-- `feature_next` - Show next feature(s) to implement (use count parameter)
+- `feature_next` - Show next feature(s) to implement
+  - `feature_next` with count=5 - Get next 5 features
+  - `feature_next` with skip_blocked=true (default) - Skip features blocked by missing capabilities
+  - `feature_next` with skip_blocked=false - Include blocked features in results
 - `feature_show` - Show full details for a specific feature by index
 - `feature_list` - List incomplete or passing features (use passing=true/false)
 - `feature_search` - Search features by keyword in description/steps
 - `feature_mark` - Mark a feature as passing or failing (use passing=false to mark as failing)
+
+### Blocked Feature Management (for handling missing capabilities)
+- `feature_mark_blocked` - Mark features as blocked by a missing capability
+  - `feature_mark_blocked` with feature_ids=[42, 43], reason="docker_unavailable"
+  - Use when features require Docker, PostgreSQL, or other unavailable tools
+- `feature_unblock` - Remove blocked status from features
+  - `feature_unblock` with feature_ids=[42, 43] - Unblock specific features
+  - `feature_unblock` with no args - Unblock all features
+- `feature_list_blocked` - List all features blocked by missing capabilities
 
 ### Progress Logging (for session history)
 - `progress_get_last` - Get last session's progress (use at session start)
@@ -248,6 +380,99 @@ You have access to the following tools. **Use the right tool for the job:**
 - `decision_record_outcome` - Record what happened after a decision
 - `decision_search` - Search decisions by keyword
 - `decision_for_feature` - Get all decisions for a specific feature
+
+### Agent Messaging (for cross-session communication)
+- `message_list` - List unread messages from previous sessions (check at session start)
+- `message_read` - Read full content of a specific message
+- `message_send` - Send a message for future sessions (type: warning/hint/blocker/discovery)
+- `message_acknowledge` - Mark a message as handled
+- `message_handoff` - Create a structured session handoff summary (use at session end)
+
+### Capability Queries (for checking system tools)
+- `capability_list` - List all system capabilities and their availability
+- `capability_check` - Check if a specific capability is available (e.g., docker, git)
+- `capability_request_help` - Request human help for a missing capability
+
+### Server Management (PREFERRED for starting/stopping servers)
+**Use these tools instead of running Bash commands directly for server management.**
+
+- `server_start` - Start a server command in background, automatically tracks PID and port
+  - Parameters: `command` (the command to run), `name` (short name), `port` (expected port)
+  - Example: `server_start` with command="npm run dev --prefix frontend", name="frontend", port=3000
+- `server_stop_port` - Stop whatever process is using a port (no need to know the PID)
+  - Use this before starting a server if you get "port already in use" errors
+- `server_wait` - Wait for a server to become available (checks port or health URL)
+  - Parameters: `port` or `url`, `timeout` (seconds, default 30)
+- `server_status` - Check which ports have servers running
+  - Parameters: `ports` (comma-separated, e.g., "3000,8000")
+- `server_restart` - Stop and restart a server on a port with a new command
+
+**Recommended workflow for starting servers:**
+1. Use `server_status` with ports="3000,8000" to check current state
+2. Use `server_stop_port` if ports are already in use
+3. Use `server_start` to start each server
+4. Use `server_wait` to confirm servers are ready before testing
+
+### Process Management (low-level, for edge cases)
+**Note:** Prefer the Server Management tools above. Use these only for non-server processes.
+
+- `process_list` - Show all tracked background processes (PID, name, port, session)
+- `process_stop` - Stop a specific process by PID (use force=true if needed)
+- `process_stop_all` - Stop all tracked processes (useful before starting new servers)
+- `process_find_port` - Find which process is using a specific port (debugging conflicts)
+- `process_track` - Manually track a background process you started
+
+**When to use process tools instead of server tools:**
+- If you need to track a non-server background process
+- If you need to stop a process by PID rather than port
+
+---
+
+## WHEN YOU'RE STUCK
+
+If you find yourself unable to make progress:
+
+1. **Check capabilities first:**
+   ```
+   capability_list
+   ```
+   Make sure the tools you need are available.
+
+2. **If a capability is missing, mark features as blocked:**
+   ```
+   feature_mark_blocked with feature_ids=[42, 43, 44], reason="docker_unavailable"
+   ```
+   Then use `feature_next` to get the next actionable feature (blocked features are skipped by default).
+
+3. **Search troubleshooting knowledge:**
+   ```
+   troubleshoot_search with query="<your issue>"
+   ```
+   Previous agents may have solved this.
+
+4. **Check for relevant messages:**
+   ```
+   message_list
+   ```
+   Previous sessions may have left hints or warnings.
+
+5. **If still stuck, request help:**
+   ```
+   capability_request_help with:
+     capability: "docker"
+     reason: "Feature #42 requires Docker to test containerized deployment"
+     blocked_features: [42, 43, 44]
+   ```
+
+6. **Leave a blocker message for the next session:**
+   ```
+   message_send with:
+     message_type: "blocker"
+     subject: "Cannot proceed with Docker features"
+     body: "Docker is not available. Features 42-44 are blocked."
+     priority: 1
+     related_features: [42, 43, 44]
+   ```
 
 ---
 

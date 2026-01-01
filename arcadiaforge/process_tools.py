@@ -59,6 +59,59 @@ def set_session_id(session_id: int) -> None:
     _current_session_id = session_id
 
 
+def cleanup_previous_processes(project_dir: Path, new_session_id: int) -> tuple[int, int]:
+    """
+    Clean up all tracked processes from previous sessions.
+
+    Called at the start of each coding session to ensure processes
+    from previous sessions don't linger and cause port conflicts.
+
+    Args:
+        project_dir: The project directory for process tracking
+        new_session_id: The new session about to start
+
+    Returns:
+        (killed_count, failed_count)
+    """
+    from arcadiaforge.process_tracker import ProcessTracker
+    from arcadiaforge.output import print_info, print_success, print_warning
+
+    tracker = ProcessTracker(project_dir)
+    running = tracker.get_running()
+
+    if not running:
+        return (0, 0)
+
+    # Only cleanup processes from previous sessions (not current)
+    # This allows manual process tracking during the same session
+    previous_session_procs = [p for p in running if p.session_id < new_session_id]
+
+    if not previous_session_procs:
+        return (0, 0)
+
+    print_info(f"Cleaning up {len(previous_session_procs)} process(es) from previous sessions...")
+
+    killed = 0
+    failed = 0
+
+    for proc in previous_session_procs:
+        if tracker.kill_process(proc.pid, force=False):
+            killed += 1
+        else:
+            # Try force kill
+            if tracker.kill_process(proc.pid, force=True):
+                killed += 1
+            else:
+                failed += 1
+
+    if killed > 0:
+        print_success(f"Stopped {killed} lingering process(es)")
+    if failed > 0:
+        print_warning(f"Failed to stop {failed} process(es)")
+
+    return (killed, failed)
+
+
 def _extract_port_from_command(command: str) -> Optional[int]:
     """Try to extract a port number from a command string."""
     # Common patterns: --port 3000, -p 8000, :3000, PORT=3000

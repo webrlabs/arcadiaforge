@@ -10,7 +10,7 @@ import platform
 import shutil
 import subprocess
 import sys
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 from arcadiaforge.output import (
     console,
@@ -30,6 +30,60 @@ MCP_PACKAGES = [
     ("@modelcontextprotocol/server-puppeteer", "Puppeteer (browser automation)"),
     ("@modelcontextprotocol/server-fetch", "Fetch (HTTP requests)"),
 ]
+
+
+def check_docker_environment() -> tuple[bool, str]:
+    """
+    Check if Docker is available and the daemon is running.
+
+    Returns:
+        (available, version_or_error) tuple.
+        If available is True, version_or_error contains the version string.
+        If available is False, version_or_error contains the error message.
+    """
+    docker_path = shutil.which("docker")
+
+    if not docker_path:
+        return False, "Docker CLI not found in PATH"
+
+    is_windows = platform.system().lower() == "windows"
+
+    # Check Docker version
+    version = ""
+    try:
+        result = subprocess.run(
+            ["docker", "--version"],
+            capture_output=True,
+            shell=is_windows,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            version = result.stdout.strip()
+    except Exception as e:
+        return False, f"docker --version failed: {e}"
+
+    # Check if daemon is running with docker info
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            shell=is_windows,
+            text=True,
+            timeout=30,  # Longer timeout for daemon check
+        )
+        if result.returncode == 0:
+            return True, version
+        else:
+            error_msg = result.stderr.strip() if result.stderr else "Docker daemon not responding"
+            # Common error on Windows when Docker Desktop isn't running
+            if "error during connect" in error_msg.lower():
+                return False, "Docker Desktop is not running"
+            return False, error_msg
+    except subprocess.TimeoutExpired:
+        return False, "Docker daemon check timed out"
+    except Exception as e:
+        return False, f"Docker daemon check failed: {e}"
 
 
 def check_node_environment() -> bool:
@@ -139,7 +193,7 @@ def preinstall_mcp_packages() -> bool:
     return all_ok
 
 
-def check_external_deps(skip_mcp_preinstall: bool = False) -> bool:
+def check_external_deps(skip_mcp_preinstall: bool = False) -> Tuple[bool, dict]:
     """
     Run all dependency checks.
 
@@ -147,16 +201,37 @@ def check_external_deps(skip_mcp_preinstall: bool = False) -> bool:
         skip_mcp_preinstall: Skip MCP package pre-installation (faster but may delay first run)
 
     Returns:
-        True if all critical dependencies are met.
+        (success, capabilities) tuple where:
+        - success: True if all critical dependencies are met
+        - capabilities: Dict of capability name -> availability status
     """
+    capabilities = {
+        "node": False,
+        "npx": False,
+        "docker": False,
+    }
+
     print_subheader("Checking Dependencies")
 
-    # Check Node.js environment
+    # Check Node.js environment (required)
     with spinner("Verifying Node.js environment..."):
         node_ok = check_node_environment()
+        capabilities["node"] = node_ok
+        capabilities["npx"] = node_ok  # npx is checked together with node
 
     if not node_ok:
-        return False
+        return False, capabilities
+
+    # Check Docker environment (optional)
+    with spinner("Checking Docker availability..."):
+        docker_available, docker_info = check_docker_environment()
+        capabilities["docker"] = docker_available
+
+    if docker_available:
+        console.print(f"  [af.ok]{icon('check')}[/] [af.muted]Docker:[/] {docker_info}")
+    else:
+        console.print(f"  [af.warn]{icon('warning')}[/] [af.muted]Docker:[/] [af.warn]not available - {docker_info}[/]")
+        print_muted("     Features requiring Docker will be skipped.")
 
     # Pre-install MCP packages
     if not skip_mcp_preinstall:
@@ -168,11 +243,13 @@ def check_external_deps(skip_mcp_preinstall: bool = False) -> bool:
             # Don't fail completely - the SDK will try again at runtime
 
     print_success("All dependencies verified")
-    return True
+    return True, capabilities
 
 
 if __name__ == "__main__":
-    if check_external_deps():
+    success, capabilities = check_external_deps()
+    if success:
+        print(f"\nCapabilities: {capabilities}")
         sys.exit(0)
     else:
         sys.exit(1)

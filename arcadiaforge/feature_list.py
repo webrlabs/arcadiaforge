@@ -238,18 +238,26 @@ class FeatureList:
         Check if features exist in the database.
 
         Returns True if there are features in the database.
+        Uses synchronous database check to work in any context.
         """
+        # First check if already loaded
+        if self._loaded and len(self._features) > 0:
+            return True
+
+        # Check database file directly using synchronous SQLite
+        db_path = self.project_dir / ".arcadia" / "project.db"
+        if not db_path.exists():
+            return False
+
         try:
-            asyncio.get_running_loop()
-            # Running event loop - can't use asyncio.run(), just load
-            return len(self._features) > 0 if self._loaded else False
-        except RuntimeError:
-            # No event loop - can use asyncio.run()
-            try:
-                features = asyncio.run(self._load_from_db())
-                return len(features) > 0
-            except Exception:
-                return False
+            import sqlite3
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.execute("SELECT COUNT(*) FROM features")
+            count = cursor.fetchone()[0]
+            conn.close()
+            return count > 0
+        except Exception:
+            return False
 
     def load(self) -> bool:
         """
@@ -1212,11 +1220,11 @@ Session: {session_number}
 
 ## Status
 This appears to be a NEW PROJECT - no features in database yet.
-You are the INITIALIZER agent. Create the feature list first.
+You are the INITIALIZER agent. Populate the features database first.
 
 ## Your Task
 1. Read app_spec.txt to understand the project requirements
-2. Create feature_list.json with 200 detailed test cases (for database import)
+2. Populate the features database with ~200 detailed test cases
 3. Create init.sh/init.bat for environment setup
 4. Initialize git repository
 5. Set up basic project structure

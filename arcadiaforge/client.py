@@ -10,7 +10,10 @@ import json
 import os
 import platform
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from arcadiaforge.project_analyzer import ProjectAnalysis
 from dotenv import load_dotenv
 
 from claude_code_sdk import ClaudeCodeOptions, ClaudeSDKClient
@@ -21,12 +24,24 @@ from arcadiaforge.feature_tools import create_feature_tools_server, FEATURE_TOOL
 from arcadiaforge.progress_tools import create_progress_tools_server, PROGRESS_TOOLS
 from arcadiaforge.troubleshooting_tools import create_troubleshooting_tools_server, TROUBLESHOOTING_TOOLS
 from arcadiaforge.image_tools import create_image_tools_server, IMAGE_TOOLS
+from arcadiaforge.messaging_tools import create_messaging_server, MESSAGING_TOOLS
+from arcadiaforge.capability_tools import create_capability_server, CAPABILITY_TOOLS
+from arcadiaforge.file_tools import create_file_tools_server, FILE_TOOLS
+from arcadiaforge.puppeteer_helpers import create_puppeteer_helpers_server, PUPPETEER_HELPER_TOOLS
+from arcadiaforge.evidence_tools import create_evidence_tools_server, EVIDENCE_TOOLS
+from arcadiaforge.native_screenshot import create_native_screenshot_server, NATIVE_SCREENSHOT_TOOLS
+from arcadiaforge.capabilities import configure_capabilities_for_project
 from arcadiaforge.db import init_db
 from arcadiaforge.process_tools import (
     create_process_tools_server,
     PROCESS_TOOLS,
     process_tracking_hook,
     set_session_id as set_process_session_id,
+)
+from arcadiaforge.server_tools import (
+    create_server_tools_server,
+    SERVER_TOOLS,
+    set_session_id as set_server_session_id,
 )
 from arcadiaforge.screenshot_hook import screenshot_saver_hook
 from arcadiaforge.output import (
@@ -181,20 +196,41 @@ def load_mcp_config() -> Dict[str, Any]:
     return config
 
 
-def create_client(project_dir: Path, model: str) -> ClaudeSDKClient:
+def create_client(
+    project_dir: Path,
+    model: str,
+    project_analysis: Optional["ProjectAnalysis"] = None
+) -> ClaudeSDKClient:
     """
     Create a Claude Agent SDK client with multi-layered security.
 
     Args:
         project_dir: Directory for the project
         model: Claude model to use
+        project_analysis: Optional analysis result for tool configuration
 
     Returns:
         Configured ClaudeSDKClient
     """
-    # Load MCP configuration
+    # Load MCP configuration (user can override via mcp_config.json)
     mcp_config = load_mcp_config()
-    
+
+    # If project analysis is available, use it to configure MCP servers
+    # Otherwise fall back to mcp_config.json or defaults
+    if project_analysis is not None:
+        profile = project_analysis.profile
+        # Override mcp_config with analysis results (unless user explicitly set them)
+        if "puppeteer" not in mcp_config or mcp_config.get("puppeteer", {}).get("enabled") is None:
+            mcp_config["puppeteer"] = {"enabled": profile.puppeteer_enabled}
+        puppeteer_enabled = profile.puppeteer_enabled
+        print_info(f"Tool profile: {profile.name} (Puppeteer: {'enabled' if puppeteer_enabled else 'disabled'})")
+    else:
+        puppeteer_enabled = mcp_config.get("puppeteer", {}).get("enabled", True)
+
+    # Configure capabilities based on Puppeteer usage
+    # If Puppeteer is disabled, node/npx are not required
+    configure_capabilities_for_project(puppeteer_enabled=puppeteer_enabled)
+
     # Prepare lists for configuration
     active_mcp_servers = {}
     active_tools = [
@@ -203,7 +239,14 @@ def create_client(project_dir: Path, model: str) -> ClaudeSDKClient:
         *PROGRESS_TOOLS,
         *TROUBLESHOOTING_TOOLS,
         *PROCESS_TOOLS,
+        *SERVER_TOOLS,
         *IMAGE_TOOLS,
+        *MESSAGING_TOOLS,
+        *CAPABILITY_TOOLS,
+        *FILE_TOOLS,
+        *PUPPETEER_HELPER_TOOLS,
+        *EVIDENCE_TOOLS,
+        *NATIVE_SCREENSHOT_TOOLS,
     ]
     
     # Platform specific check for npx command
@@ -262,7 +305,14 @@ def create_client(project_dir: Path, model: str) -> ClaudeSDKClient:
     active_mcp_servers["progress"] = create_progress_tools_server(project_dir)
     active_mcp_servers["troubleshooting"] = create_troubleshooting_tools_server(project_dir)
     active_mcp_servers["processes"] = create_process_tools_server(project_dir)
+    active_mcp_servers["servers"] = create_server_tools_server(project_dir)
     active_mcp_servers["images"] = create_image_tools_server(project_dir)
+    active_mcp_servers["messaging"] = create_messaging_server(project_dir)
+    active_mcp_servers["capabilities"] = create_capability_server(project_dir)
+    active_mcp_servers["file-operations"] = create_file_tools_server(project_dir)
+    active_mcp_servers["puppeteer-helpers"] = create_puppeteer_helpers_server(project_dir)
+    active_mcp_servers["evidence"] = create_evidence_tools_server(project_dir)
+    active_mcp_servers["native-screenshot"] = create_native_screenshot_server(project_dir)
 
     console.print()
 

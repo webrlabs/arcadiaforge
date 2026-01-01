@@ -98,42 +98,37 @@ def get_run_init_instructions() -> str:
     Get instructions for running the init script.
     Used in coding_prompt.md.
     """
-    info = get_platform_info()
+    # Server tools work the same way on all platforms
+    return """### STEP 2: START SERVERS (IF NOT RUNNING)
 
-    if info.os_type == OSType.WINDOWS:
-        return """### STEP 2: START SERVERS (IF NOT RUNNING)
+**RECOMMENDED: Use Server Management Tools**
 
-Check if any init scripts exist and run the appropriate one:
-
-**If `init.bat` exists (Command Prompt):**
-```cmd
-init.bat
+First, check which ports are in use:
+```
+server_status with ports="3000,8000"
 ```
 
-**If `init.ps1` exists (PowerShell):**
-```powershell
-powershell -ExecutionPolicy Bypass -File .\\init.ps1
+If ports are already in use by old servers, stop them:
+```
+server_stop_port with port=3000
+server_stop_port with port=8000
 ```
 
-Otherwise, start servers manually and document the process:
-```cmd
-npm install
-npm run dev
-```"""
-    else:
-        return """### STEP 2: START SERVERS (IF NOT RUNNING)
-
-If `init.sh` exists, run it:
-```bash
-chmod +x init.sh
-./init.sh
+Start servers using server_start (automatically tracks PIDs):
+```
+server_start with command="npm run dev --prefix frontend", name="frontend", port=3000
+server_start with command="python -m uvicorn backend.app.main:app --port 8000", name="backend", port=8000
 ```
 
-Otherwise, start servers manually and document the process:
-```bash
-npm install
-npm run dev
-```"""
+Wait for servers to be ready:
+```
+server_wait with port=3000, timeout=30
+server_wait with port=8000, timeout=30
+```
+
+**Alternative: If init scripts exist, you can run them (but server tools are preferred):**
+- Check for `init.bat`, `init.ps1`, or `init.sh` in the project root
+- Run with Bash if needed, but note that processes won't be automatically tracked"""
 
 
 def get_init_script_files_list() -> str:

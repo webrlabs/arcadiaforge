@@ -27,6 +27,9 @@ Usage:
 """
 
 import asyncio
+import json
+import sqlite3
+import uuid
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, Any
@@ -36,12 +39,18 @@ from sqlalchemy import select
 from arcadiaforge.db.models import (
     HotMemory as DBHotMemory,
     WarmMemory as DBWarmMemory,
-    ColdMemory as DBColdMemory,
+    WarmMemoryPattern as DBWarmMemoryPattern,
 )
 from arcadiaforge.db.connection import get_session_maker
 
 
-# Dataclasses for backwards compatibility
+MAX_RECENT_ACTIONS = 20
+MAX_RECENT_FILES = 20
+MAX_ACTIVE_ERRORS = 50
+MAX_PENDING_DECISIONS = 50
+
+
+# Dataclasses for memory payloads
 @dataclass
 class WorkingContext:
     current_feature: Optional[int] = None
@@ -156,12 +165,156 @@ class HotMemoryStub:
         self.recent_actions = []
         self.recent_files = []
         self.focus_keywords = []
+        self.active_errors = []
+        self.pending_decisions = []
+        self.current_hypotheses = []
 
 
 class MemoryManager:
     """
     Orchestrates the three-tier memory system (DB-backed).
     """
+
+    def _run_async(self, coro):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        return loop.create_task(coro)
+
+    def _get_db_path(self) -> Optional[Path]:
+        db_path = self.project_dir / ".arcadia" / "project.db"
+        return db_path if db_path.exists() else None
+
+    @staticmethod
+    def _parse_json(value: Any, default: Any):
+        if value is None:
+            return default
+        if isinstance(value, (list, dict)):
+            return value
+        try:
+            return json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            return default
+
+    @staticmethod
+    def _trim_list(values: list[Any], max_items: int) -> list[Any]:
+        if max_items <= 0:
+            return []
+        if len(values) <= max_items:
+            return values
+        return values[-max_items:]
+
+    def _fetch_hot_row(self) -> Optional[dict[str, Any]]:
+        db_path = self._get_db_path()
+        if not db_path:
+            return None
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT current_feature, current_task, recent_actions, recent_files, "
+                "focus_keywords, active_errors, pending_decisions, current_hypotheses "
+                "FROM hot_memory WHERE session_id = ?",
+                (self.session_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return None
+        return {
+            "current_feature": row["current_feature"],
+            "current_task": row["current_task"] or "",
+            "recent_actions": self._parse_json(row["recent_actions"], []),
+            "recent_files": self._parse_json(row["recent_files"], []),
+            "focus_keywords": self._parse_json(row["focus_keywords"], []),
+            "active_errors": self._parse_json(row["active_errors"], []),
+            "pending_decisions": self._parse_json(row["pending_decisions"], []),
+            "current_hypotheses": self._parse_json(row["current_hypotheses"], []),
+        }
+
+    def _fetch_latest_warm_row(self) -> Optional[dict[str, Any]]:
+        db_path = self._get_db_path()
+        if not db_path:
+            return None
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT session_id, started_at, ended_at, duration_seconds, "
+                "features_started, features_completed, features_regressed, "
+                "key_decisions, errors_encountered, errors_resolved, ending_state, "
+                "patterns_discovered, warnings_for_next, tool_calls, escalations, "
+                "human_interventions "
+                "FROM warm_memory ORDER BY session_id DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return None
+        return {
+            "session_id": row["session_id"],
+            "started_at": row["started_at"],
+            "ended_at": row["ended_at"],
+            "duration_seconds": row["duration_seconds"],
+            "features_started": row["features_started"],
+            "features_completed": row["features_completed"],
+            "features_regressed": row["features_regressed"],
+            "key_decisions": self._parse_json(row["key_decisions"], []),
+            "errors_encountered": self._parse_json(row["errors_encountered"], []),
+            "errors_resolved": self._parse_json(row["errors_resolved"], []),
+            "ending_state": row["ending_state"],
+            "patterns_discovered": self._parse_json(row["patterns_discovered"], []),
+            "warnings_for_next": self._parse_json(row["warnings_for_next"], []),
+            "tool_calls": row["tool_calls"],
+            "escalations": row["escalations"],
+            "human_interventions": row["human_interventions"],
+        }
+
+    async def _update_hot_memory(self, update_fn) -> Optional[DBHotMemory]:
+        try:
+            session_maker = get_session_maker()
+        except RuntimeError:
+            return None
+        async with session_maker() as session:
+            result = await session.execute(
+                select(DBHotMemory).where(DBHotMemory.session_id == self.session_id)
+            )
+            hot = result.scalar_one_or_none()
+            if not hot:
+                hot = DBHotMemory(
+                    session_id=self.session_id,
+                    started_at=self._session_start,
+                )
+                session.add(hot)
+                await session.flush()
+            update_fn(hot)
+            await session.commit()
+            return hot
+
+    def _persist_hot_state(self) -> None:
+        snapshot = {
+            "current_feature": self.hot.current_feature,
+            "current_task": self.hot.current_task,
+            "recent_actions": list(self.hot.recent_actions),
+            "recent_files": list(self.hot.recent_files),
+            "focus_keywords": list(self.hot.focus_keywords),
+            "active_errors": list(self.hot.active_errors),
+            "pending_decisions": list(self.hot.pending_decisions),
+            "current_hypotheses": list(self.hot.current_hypotheses),
+        }
+
+        def updater(hot: DBHotMemory) -> None:
+            hot.current_feature = snapshot["current_feature"]
+            hot.current_task = snapshot["current_task"]
+            hot.recent_actions = snapshot["recent_actions"]
+            hot.recent_files = snapshot["recent_files"]
+            hot.focus_keywords = snapshot["focus_keywords"]
+            hot.active_errors = snapshot["active_errors"]
+            hot.pending_decisions = snapshot["pending_decisions"]
+            hot.current_hypotheses = snapshot["current_hypotheses"]
+
+        self._run_async(self._update_hot_memory(updater))
 
     def __init__(self, project_dir: Path, session_id: int):
         """Initialize the memory manager."""
@@ -174,12 +327,7 @@ class MemoryManager:
         self.hot = HotMemoryStub(session_id)
 
         # Initialize hot memory in DB
-        try:
-            loop = asyncio.get_running_loop()
-            if loop.is_running():
-                loop.create_task(self._init_hot_memory())
-        except RuntimeError:
-            pass
+        self._run_async(self._init_hot_memory())
 
     async def _init_hot_memory(self):
         """Initialize hot memory in database."""
@@ -205,6 +353,8 @@ class MemoryManager:
     # Stub implementations for backwards compatibility
     def start_session(self, resume_from: Optional[int] = None) -> dict:
         """Initialize a new session."""
+        self.hot = HotMemoryStub(self.session_id)
+        self._run_async(self._init_hot_memory())
         return {
             "session_id": self.session_id,
             "started_at": self._session_start.isoformat(),
@@ -248,12 +398,7 @@ class MemoryManager:
         )
 
         # Save to DB
-        try:
-            loop = asyncio.get_running_loop()
-            if loop.is_running():
-                loop.create_task(self._save_warm_memory(summary))
-        except RuntimeError:
-            pass
+        self._run_async(self._save_warm_memory(summary))
 
         return summary
 
@@ -285,18 +430,58 @@ class MemoryManager:
         except Exception:
             pass
 
+    async def _save_warm_pattern(self, pattern: ProvenPattern) -> None:
+        """Persist a proven pattern to warm memory."""
+        try:
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                db_pattern = DBWarmMemoryPattern(
+                    pattern_id=pattern.pattern_id,
+                    created_session=self.session_id,
+                    pattern_type=pattern.pattern_type,
+                    pattern=pattern.solution,
+                    context=pattern.problem,
+                    success_count=pattern.success_count,
+                    confidence=pattern.confidence,
+                    context_keywords=pattern.context_keywords,
+                    source_sessions=pattern.sessions_used or [self.session_id],
+                    last_used_session=self.session_id,
+                )
+                session.add(db_pattern)
+                await session.commit()
+        except Exception:
+            pass
+
     # Stub methods for backwards compatibility
     def record_action(self, action: str, result: str, tool: Optional[str] = None):
-        """Record an action (stub)."""
-        pass
+        """Record an action in hot memory."""
+        entry = {
+            "action": action,
+            "result": result,
+            "tool": tool,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        self.hot.recent_actions.append(entry)
+        self.hot.recent_actions = self._trim_list(self.hot.recent_actions, MAX_RECENT_ACTIONS)
+        self._persist_hot_state()
 
     def record_file_access(self, file_path: str):
-        """Record file access (stub)."""
-        pass
+        """Record file access in hot memory."""
+        if file_path in self.hot.recent_files:
+            self.hot.recent_files.remove(file_path)
+        self.hot.recent_files.append(file_path)
+        self.hot.recent_files = self._trim_list(self.hot.recent_files, MAX_RECENT_FILES)
+        self._persist_hot_state()
 
     def add_to_hot(self, data: dict):
-        """Add data to hot memory (stub)."""
-        pass
+        """Add generic data to hot memory."""
+        if not data:
+            return
+        entry = dict(data)
+        entry.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+        self.hot.recent_actions.append(entry)
+        self.hot.recent_actions = self._trim_list(self.hot.recent_actions, MAX_RECENT_ACTIONS)
+        self._persist_hot_state()
 
     def record_error(
         self,
@@ -305,15 +490,56 @@ class MemoryManager:
         context: Optional[dict] = None,
         related_features: Optional[list[int]] = None,
     ) -> ActiveError:
-        """Record an error (stub)."""
+        """Record an error in hot memory."""
+        now = datetime.now(timezone.utc).isoformat()
+        error_entry = None
+        for entry in self.hot.active_errors:
+            if (
+                entry.get("error_type") == error_type
+                and entry.get("message") == message
+                and not entry.get("resolved", False)
+            ):
+                entry["last_seen"] = now
+                entry["occurrence_count"] = entry.get("occurrence_count", 1) + 1
+                if context:
+                    merged = dict(entry.get("context", {}))
+                    merged.update(context)
+                    entry["context"] = merged
+                if related_features:
+                    existing = set(entry.get("related_features", []))
+                    entry["related_features"] = sorted(existing | set(related_features))
+                error_entry = entry
+                break
+
+        if error_entry is None:
+            error_entry = {
+                "error_id": f"ERR-{self.session_id}-{uuid.uuid4().hex[:8]}",
+                "error_type": error_type,
+                "message": message,
+                "first_seen": now,
+                "last_seen": now,
+                "occurrence_count": 1,
+                "context": context or {},
+                "related_features": related_features or [],
+                "resolved": False,
+                "resolution": None,
+            }
+            self.hot.active_errors.append(error_entry)
+
+        self.hot.active_errors = self._trim_list(self.hot.active_errors, MAX_ACTIVE_ERRORS)
+        self._persist_hot_state()
+
         return ActiveError(
-            error_id=f"ERR-{self.session_id}-1",
-            error_type=error_type,
-            message=message,
-            first_seen=datetime.now(timezone.utc).isoformat(),
-            last_seen=datetime.now(timezone.utc).isoformat(),
-            context=context or {},
-            related_features=related_features or [],
+            error_id=error_entry["error_id"],
+            error_type=error_entry["error_type"],
+            message=error_entry["message"],
+            first_seen=error_entry["first_seen"],
+            last_seen=error_entry["last_seen"],
+            occurrence_count=error_entry.get("occurrence_count", 1),
+            context=error_entry.get("context", {}),
+            related_features=error_entry.get("related_features", []),
+            resolved=error_entry.get("resolved", False),
+            resolution=error_entry.get("resolution"),
         )
 
     def record_decision(
@@ -325,15 +551,31 @@ class MemoryManager:
         confidence: float = 0.5,
         blocking_feature: Optional[int] = None,
     ) -> PendingDecision:
-        """Record a pending decision (stub)."""
+        """Record a pending decision in hot memory."""
+        decision_entry = {
+            "decision_id": f"PD-{self.session_id}-{uuid.uuid4().hex[:8]}",
+            "decision_type": decision_type,
+            "context": context,
+            "options": options,
+            "recommendation": recommendation,
+            "confidence": confidence,
+            "blocking_feature": blocking_feature,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        self.hot.pending_decisions.append(decision_entry)
+        self.hot.pending_decisions = self._trim_list(
+            self.hot.pending_decisions, MAX_PENDING_DECISIONS
+        )
+        self._persist_hot_state()
+
         return PendingDecision(
-            decision_id=f"PD-{self.session_id}-1",
-            decision_type=decision_type,
-            context=context,
-            options=options,
-            recommendation=recommendation,
-            confidence=confidence,
-            blocking_feature=blocking_feature,
+            decision_id=decision_entry["decision_id"],
+            decision_type=decision_entry["decision_type"],
+            context=decision_entry["context"],
+            options=decision_entry["options"],
+            recommendation=decision_entry.get("recommendation"),
+            confidence=decision_entry.get("confidence", 0.5),
+            blocking_feature=decision_entry.get("blocking_feature"),
         )
 
     def set_focus(
@@ -342,8 +584,11 @@ class MemoryManager:
         task: str = "",
         keywords: Optional[list[str]] = None,
     ):
-        """Set current working focus (stub)."""
-        pass
+        """Set current working focus in hot memory."""
+        self.hot.current_feature = feature
+        self.hot.current_task = task
+        self.hot.focus_keywords = keywords or []
+        self._persist_hot_state()
 
     def learn_pattern(
         self,
@@ -352,78 +597,301 @@ class MemoryManager:
         pattern_type: str = "fix",
         context_keywords: Optional[list[str]] = None,
     ) -> ProvenPattern:
-        """Record a pattern that worked (stub)."""
-        return ProvenPattern(
-            pattern_id=f"PAT-{self.session_id}-1",
+        """Record a pattern that worked in warm memory."""
+        pattern = ProvenPattern(
+            pattern_id=f"PAT-{self.session_id}-{uuid.uuid4().hex[:8]}",
             pattern_type=pattern_type,
             problem=problem,
             solution=solution,
+            confidence=0.5,
+            success_count=1,
             context_keywords=context_keywords or [],
+            sessions_used=[self.session_id],
         )
+        self._run_async(self._save_warm_pattern(pattern))
+        return pattern
 
     def find_relevant_patterns(self, query: str) -> list[ProvenPattern]:
-        """Find patterns relevant to a query (stub)."""
-        return []
+        """Find patterns relevant to a query from warm memory."""
+        db_path = self._get_db_path()
+        if not db_path:
+            return []
+
+        query_lower = query.lower()
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute(
+                "SELECT pattern_id, pattern_type, pattern, context, success_count, "
+                "confidence, context_keywords, source_sessions "
+                "FROM warm_memory_patterns"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        patterns: list[ProvenPattern] = []
+        for row in rows:
+            keywords = self._parse_json(row["context_keywords"], [])
+            source_sessions = self._parse_json(row["source_sessions"], [])
+            context = row["context"] or ""
+            pattern_text = row["pattern"] or ""
+            haystack = " ".join([pattern_text, context, " ".join(keywords)]).lower()
+            if query_lower not in haystack:
+                continue
+            patterns.append(
+                ProvenPattern(
+                    pattern_id=row["pattern_id"],
+                    pattern_type=row["pattern_type"],
+                    problem=context,
+                    solution=pattern_text,
+                    confidence=row["confidence"] or 0.5,
+                    success_count=row["success_count"] or 1,
+                    context_keywords=keywords,
+                    sessions_used=source_sessions,
+                )
+            )
+        return patterns
 
     def find_relevant_knowledge(self, query: str) -> list[KnowledgeEntry]:
-        """Find knowledge relevant to a query (stub)."""
-        return []
+        """Find knowledge relevant to a query from cold memory."""
+        db_path = self._get_db_path()
+        if not db_path:
+            return []
+
+        query_lower = query.lower()
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute(
+                "SELECT knowledge_id, knowledge_type, title, description, "
+                "confidence, times_verified, context_keywords "
+                "FROM cold_memory_knowledge"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        knowledge: list[KnowledgeEntry] = []
+        for row in rows:
+            keywords = self._parse_json(row["context_keywords"], [])
+            title = row["title"] or ""
+            description = row["description"] or ""
+            haystack = " ".join([title, description, " ".join(keywords)]).lower()
+            if query_lower not in haystack:
+                continue
+            knowledge.append(
+                KnowledgeEntry(
+                    knowledge_id=row["knowledge_id"],
+                    knowledge_type=row["knowledge_type"],
+                    title=title,
+                    description=description,
+                    confidence=row["confidence"] or 0.5,
+                    times_verified=row["times_verified"] or 1,
+                    context_keywords=keywords,
+                )
+            )
+        return knowledge
 
     def find_solutions(self, query: str) -> list[dict]:
-        """Find solutions from both patterns and knowledge (stub)."""
-        return []
+        """Find solutions from both patterns and knowledge."""
+        solutions = []
+        for pattern in self.find_relevant_patterns(query):
+            solutions.append(
+                {
+                    "type": "pattern",
+                    "pattern_id": pattern.pattern_id,
+                    "problem": pattern.problem,
+                    "solution": pattern.solution,
+                    "confidence": pattern.confidence,
+                }
+            )
+        for entry in self.find_relevant_knowledge(query):
+            solutions.append(
+                {
+                    "type": "knowledge",
+                    "knowledge_id": entry.knowledge_id,
+                    "title": entry.title,
+                    "description": entry.description,
+                    "confidence": entry.confidence,
+                }
+            )
+        return solutions
 
     def get_hot_context(self) -> str:
-        """Get context string from hot memory (stub)."""
-        return "No active context."
+        """Get context string from hot memory."""
+        hot = self._fetch_hot_row()
+        if not hot:
+            return "No active context."
+
+        lines = ["HOT MEMORY", "-" * 40]
+        if hot["current_feature"] is not None:
+            lines.append(f"Current feature: {hot['current_feature']}")
+        if hot["current_task"]:
+            lines.append(f"Current task: {hot['current_task']}")
+        if hot["focus_keywords"]:
+            lines.append(f"Keywords: {', '.join(hot['focus_keywords'][:8])}")
+        if hot["recent_actions"]:
+            lines.append(f"Recent actions: {len(hot['recent_actions'])}")
+        if hot["active_errors"]:
+            lines.append(f"Active errors: {len(hot['active_errors'])}")
+        if hot["pending_decisions"]:
+            lines.append(f"Pending decisions: {len(hot['pending_decisions'])}")
+        return "\n".join(lines)
 
     def get_warm_context(self) -> str:
-        """Get context string from warm memory (stub)."""
-        return "No previous session context."
+        """Get context string from warm memory."""
+        warm = self._fetch_latest_warm_row()
+        if not warm:
+            return "No previous session context."
+
+        lines = [
+            "WARM MEMORY",
+            "-" * 40,
+            f"Last session: {warm['session_id']}",
+            f"Completed: {warm['features_completed']}, Regressed: {warm['features_regressed']}",
+            f"Ending state: {warm['ending_state']}",
+        ]
+        if warm["warnings_for_next"]:
+            lines.append(
+                f"Warnings: {', '.join(warm['warnings_for_next'][:3])}"
+            )
+        if warm["patterns_discovered"]:
+            lines.append(
+                f"Patterns: {', '.join(warm['patterns_discovered'][:3])}"
+            )
+        return "\n".join(lines)
 
     def get_cold_context(self) -> str:
-        """Get context string from cold memory (stub)."""
-        return "No historical data available."
+        """Get context string from cold memory."""
+        db_path = self._get_db_path()
+        if not db_path:
+            return "No historical data available."
+
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute(
+                "SELECT knowledge_id, knowledge_type, title, description, "
+                "times_verified, confidence "
+                "FROM cold_memory_knowledge "
+                "ORDER BY times_verified DESC LIMIT 3"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        if not rows:
+            return "No historical data available."
+
+        lines = ["COLD MEMORY", "-" * 40]
+        for row in rows:
+            lines.append(
+                f"[{row['knowledge_id']}] {row['knowledge_type']}: {row['title']}"
+            )
+        return "\n".join(lines)
 
     def get_full_context(self) -> str:
         """Get combined context from all memory tiers."""
-        return "No memory context available."
+        return "\n\n".join(
+            [
+                self.get_hot_context(),
+                self.get_warm_context(),
+                self.get_cold_context(),
+            ]
+        )
 
     def get_context_size(self) -> dict:
         """Get approximate size of context from each tier."""
+        hot = self._fetch_hot_row() or {}
+        warm = self._fetch_latest_warm_row() or {}
+        hot_size = (
+            len(hot.get("recent_actions", []))
+            + len(hot.get("recent_files", []))
+            + len(hot.get("active_errors", []))
+            + len(hot.get("pending_decisions", []))
+        )
+        warm_size = len(warm.get("errors_encountered", [])) + len(
+            warm.get("patterns_discovered", [])
+        )
+        cold_count = 0
+        db_path = self._get_db_path()
+        if db_path:
+            conn = sqlite3.connect(str(db_path))
+            try:
+                result = conn.execute(
+                    "SELECT COUNT(*) FROM cold_memory_knowledge"
+                ).fetchone()
+                cold_count = result[0] if result else 0
+            finally:
+                conn.close()
         return {
-            "hot": 0,
-            "warm": 0,
-            "cold": 0,
-            "total": 0,
+            "hot": hot_size,
+            "warm": warm_size,
+            "cold": cold_count,
+            "total": hot_size + warm_size + cold_count,
         }
 
     def get_summary(self) -> dict:
         """Get summary of all memory tiers."""
+        hot = self._fetch_hot_row() or {}
+        warm = self._fetch_latest_warm_row() or {}
+        cold_summary = {
+            "sessions": 0,
+            "knowledge_entries": 0,
+        }
+        db_path = self._get_db_path()
+        if db_path:
+            conn = sqlite3.connect(str(db_path))
+            try:
+                result = conn.execute("SELECT COUNT(*) FROM cold_memory").fetchone()
+                cold_summary["sessions"] = result[0] if result else 0
+                result = conn.execute(
+                    "SELECT COUNT(*) FROM cold_memory_knowledge"
+                ).fetchone()
+                cold_summary["knowledge_entries"] = result[0] if result else 0
+            finally:
+                conn.close()
         return {
             "session_id": self.session_id,
-            "hot": {},
-            "warm": {},
-            "cold": {},
+            "hot": {
+                "current_feature": hot.get("current_feature"),
+                "current_task": hot.get("current_task", ""),
+                "recent_actions": len(hot.get("recent_actions", [])),
+                "recent_files": len(hot.get("recent_files", [])),
+                "active_errors": len(hot.get("active_errors", [])),
+                "pending_decisions": len(hot.get("pending_decisions", [])),
+            },
+            "warm": {
+                "last_session": warm.get("session_id"),
+                "features_completed": warm.get("features_completed", 0),
+                "features_regressed": warm.get("features_regressed", 0),
+                "ending_state": warm.get("ending_state"),
+            },
+            "cold": cold_summary,
         }
 
     def get_statistics(self) -> AggregateStatistics:
         """Get aggregate statistics from cold memory."""
-        return AggregateStatistics()
-
-
-# Stub classes for backwards compatibility
-class HotMemory:
-    def __init__(self, project_dir: Path, session_id: int):
-        pass
-
-class WarmMemory:
-    def __init__(self, project_dir: Path):
-        pass
-
-class ColdMemory:
-    def __init__(self, project_dir: Path):
-        pass
+        stats = AggregateStatistics()
+        db_path = self._get_db_path()
+        if not db_path:
+            return stats
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*), COALESCE(SUM(features_completed), 0), "
+                "COALESCE(SUM(errors_count), 0) FROM cold_memory"
+            ).fetchone()
+            if row:
+                stats.total_sessions = row[0]
+                stats.total_features_completed = row[1]
+                stats.total_errors = row[2]
+            row = conn.execute(
+                "SELECT COUNT(*) FROM cold_memory_knowledge"
+            ).fetchone()
+            if row:
+                stats.knowledge_entries = row[0]
+        finally:
+            conn.close()
+        return stats
 
 
 # Factory functions
@@ -432,38 +900,20 @@ def create_memory_manager(project_dir: Path, session_id: int) -> MemoryManager:
     return MemoryManager(project_dir, session_id)
 
 
-def create_hot_memory(project_dir: Path, session_id: int) -> HotMemory:
-    """Create hot memory (stub)."""
-    return HotMemory(project_dir, session_id)
 
-
-def create_warm_memory(project_dir: Path) -> WarmMemory:
-    """Create warm memory (stub)."""
-    return WarmMemory(project_dir)
-
-
-def create_cold_memory(project_dir: Path) -> ColdMemory:
-    """Create cold memory (stub)."""
-    return ColdMemory(project_dir)
 
 
 # Exports
 __all__ = [
     "MemoryManager",
     "create_memory_manager",
-    "HotMemory",
     "WorkingContext",
     "ActiveError",
     "PendingDecision",
-    "create_hot_memory",
-    "WarmMemory",
     "SessionSummary",
     "UnresolvedIssue",
     "ProvenPattern",
-    "create_warm_memory",
-    "ColdMemory",
     "ArchivedSession",
     "KnowledgeEntry",
     "AggregateStatistics",
-    "create_cold_memory",
 ]
