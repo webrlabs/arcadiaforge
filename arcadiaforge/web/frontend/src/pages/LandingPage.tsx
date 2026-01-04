@@ -77,7 +77,13 @@ const LandingPage: React.FC = () => {
           <ThemeToggle />
         </Box>
 
-        <Box sx={{ mb: 6, textAlign: 'center' }}>
+      <Box sx={{ mb: 6, textAlign: 'center' }}>
+        <Box
+          component="img"
+          src="/arcadiaforge_icon.png"
+          alt="ArcadiaForge icon"
+          sx={{ width: 120, height: 120, mb: 2, mx: 'auto', display: 'block' }}
+        />
         <Typography variant="h2" component="h1" gutterBottom color="primary" sx={{ fontWeight: 800, letterSpacing: -1 }}>
           ArcadiaForge
         </Typography>

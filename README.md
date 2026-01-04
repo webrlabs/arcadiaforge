@@ -8,9 +8,11 @@
                      Autonomous Coding Framework
 ```
 
-# Arcadia Forge
+# ArcadiaForge
 
-An advanced harness for long-running autonomous coding, built on the Claude Agent SDK. This project extends the Anthropic [autonomous-coding quickstart](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding) with enterprise-grade orchestration, safety, state management, and observability features.
+![ArcadiaForge icon](./arcadiaforge_icon.png)
+
+An advanced harness for long-running autonomous coding, built on the Claude Code SDK. This project extends the Anthropic [autonomous-coding quickstart](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding) with enterprise-grade orchestration, safety, state management, and observability features.
 
 **Cross-Platform Support:** Works on Windows, macOS, and Linux with platform-specific init scripts and commands.
 
@@ -21,19 +23,20 @@ An advanced harness for long-running autonomous coding, built on the Claude Agen
 | **Multi-Session Development** | Split work across many sessions with auto-continue and crash recovery |
 | **Database-Backed State** | SQLite persistence for features, memory, checkpoints, and events |
 | **200+ Feature Management** | Test cases with steps, dependencies, audit tracking, and evidence screenshots |
-| **Defense-in-Depth Security** | Allowlist-based command validation, sandboxed bash, risk classification |
+| **Defense-in-Depth Security** | Allowlist-based command validation, risk classification, and auto-checkpoints |
 | **Cost Control** | Real-time budget tracking with configurable USD limits |
 | **5-Level Autonomy** | Graduated levels from OBSERVE to FULL_AUTO with action gating |
 | **Tiered Memory System** | Hot/Warm/Cold memory for efficient long-running context management |
 | **Automated Auditing** | Periodic feature review with high-risk change detection |
 | **Web Dashboard** | Real-time progress monitoring and activity visualization |
+| **Web App UI** | React + FastAPI app for project creation, live dashboards, and terminal streaming |
 | **50+ Built-in Tools** | File ops, browser control, process management, evidence capture |
 
 ## Installation
 
-### Step 1: Install Node.js and Claude Code CLI
+### Step 1: Install Node.js (v18+) and Claude Code CLI
 
-First, ensure you have [Node.js](https://nodejs.org/) (v18+) installed, then install the Claude Code CLI:
+First, ensure you have [Node.js](https://nodejs.org/) (v18+) installed (required for MCP servers and the web frontend), then install the Claude Code CLI to generate an auth token:
 
 ```bash
 npm install -g @anthropic-ai/claude-code
@@ -46,7 +49,7 @@ claude --version
 
 ### Step 2: Set Up Python Environment
 
-Create and activate a conda/mamba environment with the required dependencies:
+Create and activate a conda/mamba environment with the required dependencies (including the web backend requirements):
 
 ```bash
 # Using mamba (recommended for speed)
@@ -56,6 +59,11 @@ mamba activate arcadiaforge
 # Or using conda
 conda env create --file environment.yaml
 conda activate arcadiaforge
+```
+
+Install the local package (for console scripts like `autonomous-agent`):
+```bash
+pip install -e .
 ```
 
 Verify the SDK is installed:
@@ -69,6 +77,7 @@ Generate an OAuth token for Claude Code:
 
 ```bash
 claude setup-token
+# Or: claude /login (interactive)
 ```
 
 Then create your environment file:
@@ -96,12 +105,20 @@ CLAUDE_CODE_OAUTH_TOKEN=your_token_here
 Start the autonomous agent to build a project:
 
 ```bash
-python -m arcadiaforge --project-dir ./my_project
+python -m arcadiaforge --project-dir my_project
 ```
+
+Note: relative paths are created under `generations/` (e.g., `generations/my_project`).
 
 For a quick test run with limited iterations:
 ```bash
 python -m arcadiaforge --project-dir ./my_project --max-iterations 3
+```
+
+Use a custom app spec or add requirements later:
+```bash
+python -m arcadiaforge --project-dir ./my_project --app-spec ./my_app_spec.txt
+python -m arcadiaforge --project-dir ./my_project --new-requirements ./new_features.txt --num-new-features 25
 ```
 
 ### CLI Commands
@@ -109,9 +126,10 @@ python -m arcadiaforge --project-dir ./my_project --max-iterations 3
 | Command | Description |
 |---------|-------------|
 | `python -m arcadiaforge` | Primary entry point for autonomous coding |
+| `autonomous-agent` | Console script equivalent to `python -m arcadiaforge` |
 | `python -m arcadiaforge processes` | Show tracked development processes |
 | `python -m arcadiaforge cleanup` | Clean up tracked processes |
-| `python -m arcadiaforge dashboard` | Start the web dashboard |
+| `python -m arcadiaforge dashboard` | Start the web dashboard (supports `--port` and `--no-browser`) |
 | `checkpoint-cli` | Manage project checkpoints and rollbacks |
 | `events-cli` | Inspect session events and history |
 | `feature-cli` | Manage features database |
@@ -133,7 +151,7 @@ python -m arcadiaforge --project-dir ./my_project --max-iterations 3
 
 ### Core Architecture
 
-Arcadia Forge uses a sophisticated multi-component architecture:
+ArcadiaForge uses a sophisticated multi-component architecture:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -192,36 +210,37 @@ The framework supports five graduated autonomy levels:
 
 This demo uses a defense-in-depth security approach (see `arcadiaforge/security.py` and `arcadiaforge/client.py`):
 
-1. **OS-level Sandbox:** Bash commands run in an isolated environment
-2. **Filesystem Restrictions:** File operations restricted to the project directory only
-3. **Risk Classification:** Every tool call is classified (Low/Medium/High/Critical)
-4. **Auto-Checkpoints:** Triggered before destructive operations
-5. **Platform-Aware Allowlist:** Only specific commands are permitted:
+1. **Command allowlist:** Only approved commands run, with platform-specific rules.
+2. **Wrapper validation:** `cmd`, `powershell`, `bash`, and `sh` subcommands are validated against the same allowlist.
+3. **Process-kill restrictions:** `pkill`/`taskkill` are limited to dev server processes or filtered targets.
+4. **Risk classification + auto-checkpoints:** Potentially destructive commands trigger checkpoints before execution.
 
-**Common Commands (all platforms):**
+**Common commands (all platforms):**
 - File inspection: `ls`, `cat`, `head`, `tail`, `wc`, `grep`
+- File ops: `cp`, `mkdir`, `pwd`
 - Node.js: `npm`, `node`, `npx`
 - Version control: `git`
 - Python: `python`, `pip`, `conda`, `mamba`
-- Other: `curl`, `echo`, `sleep`
+- Other: `curl`, `echo`, `ping`, `sleep`, `timeout`, `ps`, `uvicorn`
 
 **Linux / macOS specific:**
 - Process management: `pkill` (dev processes only), `lsof`
+- Shell wrappers: `bash`, `sh`
 - File permissions: `chmod` (+x only)
 - Init script: `./init.sh`
 
 **Windows specific:**
 - Process management: `taskkill` (dev processes only)
-- Commands: `dir`, `type`, `start`, `powershell`
+- Commands: `dir`, `type`, `copy`, `md`, `where`, `start`, `cmd`, `powershell`
 - Init scripts: `init.bat`, `init.ps1`
 
 ### Auto-Checkpoint Triggers
 
 Checkpoints are automatically created before:
 - `git push` / `git push -f`
-- `git reset` / `git revert`
-- `rm -rf` / `rmdir /s`
-- `drop table` / `drop database`
+- `git reset` / `git revert` / `git checkout -f` / `git clean` / `git stash drop` / `git branch -D` / `git branch -d`
+- `rm -rf` / `rm -r` / `rmdir /s` / `del /s`
+- `drop table` / `drop database` / `truncate` / `delete from`
 - `npm uninstall` / `pip uninstall`
 
 ## Project Structure
@@ -376,9 +395,16 @@ The application will typically be available at `http://localhost:3000` or simila
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--project-dir` | Directory for the project | `./autonomous_demo_project` |
+| `--project-dir` | Directory for the project (relative paths are placed under `generations/`) | `./autonomous_demo_project` |
 | `--max-iterations` | Max agent iterations | Unlimited |
 | `--model` | Claude model to use | `claude-sonnet-4-5-20250929` |
+| `--new-requirements` | Add features from a requirements file | None |
+| `--num-new-features` | Number of new features to add from requirements | Agent decides |
+| `--max-no-progress` | Stop after N iterations with no progress (0 disables) | `3` |
+| `--audit-cadence` | Run audit every N completed features (0 disables) | `10` |
+| `--app-spec` | Use a custom app spec file | None |
+| `--live-terminal` | Enable live terminal input during runs | Off |
+| `--verbose` | Verbose output (tool calls and reasoning) | Off |
 
 ## Web Dashboard
 
@@ -393,6 +419,24 @@ The dashboard provides:
 - Session activity visualization
 - Event log streaming
 - Cost and metrics display
+
+## Web App (React + FastAPI)
+
+Launch the full web UI (project creation + per-project dashboards):
+
+```bash
+python start_web.py
+```
+
+Manual start:
+```bash
+python run_backend.py
+cd arcadiaforge/web/frontend
+npm install
+npm run dev
+```
+
+The UI runs on `http://localhost:5173` with the backend at `http://localhost:8000`.
 
 ## Customization
 
@@ -497,20 +541,26 @@ The detection is handled by `platform_utils.py` which provides:
 
 ## Dependencies
 
-### Python Requirements
-- `claude-code-sdk>=0.0.25` - Claude Agent SDK
+### Python Requirements (core)
+- `claude-code-sdk>=0.0.25` - Claude Code SDK
 - `rich>=13.0.0` - Terminal formatting
 - `python-dotenv>=1.0.0` - Environment variables
 - `prompt_toolkit>=3.0.0` - Interactive terminal
 - `sqlalchemy>=2.0.0` - ORM for database
 - `aiosqlite>=0.19.0` - Async SQLite driver
 
+### Web UI Requirements (optional)
+- `fastapi` - Web API + dashboard server
+- `uvicorn` - ASGI server
+- `websockets` - WebSocket streaming
+- `python-multipart` - File upload support
+
 ### System Requirements
-- Node.js v18+ (for Claude Code CLI and Puppeteer)
+- Node.js v18+ and npx (for MCP servers, Claude Code CLI, and the web frontend)
 - Python 3.10+
 - Git
 - Optional: Docker, PostgreSQL
 
 ## License
 
-Internal Anthropic use.
+MIT License. See `LICENSE`.
