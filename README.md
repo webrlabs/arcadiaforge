@@ -1,16 +1,6 @@
-```bash
-      _                        _ _       ______
-     / \   _ __ ___ __ _   ___| (_) __ _|  ____|__  _ __ __ _  ___
-    / _ \ | '__/ __/ _` | / _ | | |/ _` | |__ / _ \| '__/ _` |/ _ \
-   / ___ \| | | (_| (_| || (_)| | | (_| |  __| (_) | | | (_| |  __/
-  /_/   \_\_|  \___\__,_| \___|_|_|\__,_|_|   \___/|_|  \__, |\___|
-                                                        |___/
-                     Autonomous Coding Framework
-```
+<img src="./arcadiaforge_icon.png" alt="ArcadiaForge icon" width="100"/>
 
 # ArcadiaForge
-
-![ArcadiaForge icon](./arcadiaforge_icon.png)
 
 An advanced harness for long-running autonomous coding, built on the Claude Code SDK. This project extends the Anthropic [autonomous-coding quickstart](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding) with enterprise-grade orchestration, safety, state management, and observability features.
 
