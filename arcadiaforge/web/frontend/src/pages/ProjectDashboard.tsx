@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { 
-  Box, Typography, AppBar, Toolbar, IconButton, Tabs, Tab, 
+import {
+  Box, Typography, AppBar, Toolbar, IconButton, Tabs, Tab,
   Button, Select, MenuItem, FormControl
 } from '@mui/material';
 import { ArrowLeft, Play } from 'lucide-react';
@@ -9,6 +9,7 @@ import Terminal from '../components/Terminal';
 import DatabaseTable from '../components/DatabaseTable';
 import ReasoningTimeline from '../components/ReasoningTimeline';
 import StatusHeader from '../components/StatusHeader';
+import ThemeToggle from '../components/ThemeToggle';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -29,6 +30,7 @@ const ProjectDashboard: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const [tabValue, setTabValue] = useState(0);
   const [subTab, setSubTab] = useState('features'); // For tabs with multiple tables
+  const [runId, setRunId] = useState(0);
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -56,7 +58,16 @@ const ProjectDashboard: React.FC = () => {
           {/* Real-time Status Header */}
           <StatusHeader projectId={projectId} />
 
-          <Button variant="contained" color="primary" size="small" startIcon={<Play size={14} />}>
+          <ThemeToggle size={18} />
+
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            startIcon={<Play size={14} />}
+            sx={{ ml: 1 }}
+            onClick={() => setRunId((prev) => prev + 1)}
+          >
             Generate
           </Button>
         </Toolbar>
@@ -138,7 +149,7 @@ const ProjectDashboard: React.FC = () => {
 
         {/* Right Side: Terminal Sidebar */}
         <Box sx={{ width: '50%', borderLeft: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column' }}>
-          <Terminal projectId={projectId || ''} />
+          <Terminal projectId={projectId || ''} runId={runId} />
         </Box>
       </Box>
     </Box>

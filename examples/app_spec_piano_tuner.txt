@@ -1,0 +1,301 @@
+<project_specification>
+  <project_name>PianoTuner</project_name>
+
+  <overview>
+    Build a cross-platform desktop application that uses a computer-connected microphone to assist users in tuning an acoustic piano.
+    The app must:
+    - Detect pitch in real time from microphone audio.
+    - Estimate which piano key (note name + octave) is being sounded.
+    - Provide an interactive visual piano keyboard that highlights the guessed key.
+    - Provide a chromatic tuner UI that shows the target note/frequency and the measured note/frequency relative to the target (cents offset).
+    - Allow the user to manually set an intended note (e.g., C4) to lock the target when the piano is severely out of tune.
+  </overview>
+
+  <non_goals>
+    - Full professional piano tuning features such as stretch tuning presets, inharmonicity modeling per string, or multi-string unison balancing.
+    - Automated tuning hardware control.
+    - Cloud dependency; app should run offline.
+  </non_goals>
+
+  <primary_users>
+    - Hobbyists and musicians tuning a home piano.
+    - Music teachers or students doing basic tuning checks.
+  </primary_users>
+
+  <platform_targets>
+    <desktop>
+      <windows>Windows 10/11</windows>
+      <macos>macOS 12+</macos>
+      <linux>Ubuntu/Fedora-class distros</linux>
+    </desktop>
+  </platform_targets>
+
+  <user_experience>
+    <key_workflows>
+      <workflow name="Quick tune (auto-detect)">
+        1) User selects input microphone device and confirms input level.
+        2) User plays a single piano note.
+        3) App detects pitch, guesses key (e.g., A4), highlights it on the keyboard, and displays tuner offset.
+        4) User tunes until the offset is near 0 cents and the UI indicates "In Tune".
+      </workflow>
+
+      <workflow name="Manual target lock (severely out of tune)">
+        1) User selects the intended note (e.g., C4) via keyboard click or note dropdown.
+        2) App locks target to that note/frequency and shows the chromatic tuner relative to that target.
+        3) User tunes until centered; user can unlock to return to auto-detect.
+      </workflow>
+
+      <workflow name="Keyboard-first tuning">
+        1) User clicks a piano key in the UI to set the target.
+        2) App listens and provides cents offset relative to selected key.
+      </workflow>
+    </key_workflows>
+
+    <ui_layout>
+      <layout name="Main Screen (single window)">
+        - Top bar: input device selector, input meter, latency indicator, settings button.
+        - Left panel: large chromatic tuner (target note + frequency, cents needle/slider, stable/in-tune indicator).
+        - Center: interactive piano keyboard (A0–C8 range), highlighted detected key, optional zoom range.
+        - Right panel: target controls (Auto/Lock toggle, note dropdown C0–B8, octave selector, reference A4 frequency),
+          and a small diagnostics area (detected fundamental Hz, confidence, noise gate status).
+        - Bottom: history strip (last 10 detections: note, Hz, cents, timestamp) and “Hold” toggle.
+      </layout>
+    </ui_layout>
+
+    <visual_requirements>
+      - Keyboard must clearly distinguish white/black keys, show note labels on hover, and highlight:
+        (a) detected key, (b) manually selected target key, and (c) “closest” key if detection confidence is low.
+      - Tuner must show:
+        - Target note name (e.g., A4)
+        - Target frequency (e.g., 440.00 Hz)
+        - Measured frequency (e.g., 437.12 Hz)
+        - Offset in cents (e.g., -11.3 cents)
+        - A centered “in tune” zone (e.g., ±2 cents) and a broader “close” zone (e.g., ±5 cents).
+      - Must remain readable at typical laptop screen sizes; responsive resizing.
+    </visual_requirements>
+  </user_experience>
+
+  <audio_signal_processing>
+    <audio_capture>
+      - Use OS audio APIs via a cross-platform library.
+      - Sample rate: configurable; default 48 kHz; support 44.1 kHz.
+      - Buffer size: configurable; provide presets for low-latency and stable detection.
+      - Provide input gain meter and clipping indicator.
+    </audio_capture>
+
+    <pitch_detection>
+      <requirements>
+        - Real-time pitch detection optimized for piano fundamentals (A0 ~ 27.5 Hz to C8 ~ 4186 Hz).
+        - Robust against harmonics/overtones; detect fundamental reliably.
+        - Provide a confidence score (0–1) and a stability metric (e.g., rolling standard deviation of pitch).
+        - Use a noise gate / silence detection to avoid jitter when no note is present.
+      </requirements>
+
+      <recommended_algorithms>
+        - Primary: YIN or McLeod Pitch Method (MPM) for time-domain fundamental estimation.
+        - Secondary/validation: FFT peak + harmonic product spectrum (HPS) for cross-checking, especially in noisy rooms.
+        - Smoothing: median filter + exponential moving average on detected Hz when signal is stable.
+      </recommended_algorithms>
+
+      <note_mapping>
+        - Convert frequency to MIDI note number (float) using reference A4 (default 440 Hz, user-configurable).
+        - Compute nearest semitone note + octave (e.g., C4) and cents offset:
+          cents = 1200 * log2(f_measured / f_target).
+        - When in Auto mode:
+          - Choose the best target note via nearest semitone if confidence above threshold.
+          - If confidence below threshold, show multiple candidates (e.g., best 2) and prompt user to lock target.
+        - When in Locked mode:
+          - Always compute cents relative to user-selected target note.
+      </note_mapping>
+    </pitch_detection>
+
+    <edge_cases>
+      - Very out-of-tune notes (> ~50–100 cents): allow detection to still show offset even if note name guess is wrong;
+        user can override with lock.
+      - Pedal/adjacent-string resonance: require stability over N frames before confirming key highlight.
+      - Chords: app should detect “polyphonic / multiple notes” heuristically (e.g., multiple strong peaks / unstable pitch)
+        and show “Play single note” hint.
+    </edge_cases>
+  </audio_signal_processing>
+
+  <functional_requirements>
+    <must_have>
+      - Microphone input selection + live level meter.
+      - Real-time pitch display (Hz), note display (e.g., A#3), cents offset.
+      - Chromatic tuner visualization (needle/slider/arc) with in-tune indicator.
+      - Visual piano keyboard with highlighted detected key.
+      - Manual target selection (dropdown + keyboard click) and lock/unlock toggle.
+      - Reference pitch setting: A4 (default 440.0 Hz, range 415–466).
+      - Basic calibration wizard: “Play A4 (or any note) and confirm detection” (no external reference required).
+      - Start/stop listening button.
+    </must_have>
+
+    <should_have>
+      - “Hold” mode: freeze the last stable detection for a few seconds after note release.
+      - Note history list with export (CSV/JSON).
+      - Optional note range focus (e.g., show only one octave at a time).
+      - Visual confidence indicator (bar or color intensity).
+    </should_have>
+
+    <nice_to_have>
+      - Guided tuning mode: step through notes in a sequence (e.g., temperament octave).
+      - Metronome click for consistent striking (optional).
+      - Dark mode.
+    </nice_to_have>
+  </functional_requirements>
+
+  <quality_requirements>
+    <performance>
+      - Latency target: < 80 ms end-to-end on typical hardware.
+      - UI refresh: 30–60 FPS for smooth tuner animation.
+      - CPU: keep below 15% on a modern laptop during continuous use.
+    </performance>
+
+    <accuracy>
+      - For clean single notes, aim for stable cents estimate within ±2 cents after smoothing.
+      - Confidence score must correlate with reliability (avoid falsely confident wrong notes).
+    </accuracy>
+
+    <reliability>
+      - Handle microphone disconnect/reconnect gracefully.
+      - Clear error messages for permission issues (macOS mic permission) and device failures.
+    </reliability>
+
+    <privacy>
+      - Audio processing local-only; no audio uploaded.
+      - If analytics are added later, default off and never transmit raw audio.
+    </privacy>
+  </quality_requirements>
+
+  <technology_stack>
+    <recommended_option name="Python + Qt (desktop)">
+      <language>Python 3.11+</language>
+      <ui_framework>PySide6 (Qt)</ui_framework>
+      <audio_io>sounddevice (PortAudio) or PyAudio</audio_io>
+      <dsp>numpy, scipy</dsp>
+      <pitch_lib_optional>aubio (if compatible) or custom YIN/MPM implementation</pitch_lib_optional>
+      <packaging>PyInstaller (Win/Linux), py2app (macOS) or Briefcase</packaging>
+    </recommended_option>
+
+    <alternate_option name="Electron + WebAudio + WASM DSP">
+      <ui_framework>Electron</ui_framework>
+      <audio_io>WebAudio getUserMedia</audio_io>
+      <dsp>WASM (Rust) pitch detection</dsp>
+      <packaging>Electron Builder</packaging>
+    </alternate_option>
+  </technology_stack>
+
+  <architecture>
+    <modules>
+      <module name="AudioInput">
+        - Enumerate devices, open stream, deliver audio frames via callback.
+        - Provide RMS/peak meter and clipping detection.
+      </module>
+
+      <module name="PitchEngine">
+        - Consume frames, apply pre-processing (HPF/DC removal, windowing).
+        - Run pitch detection on rolling buffer.
+        - Output: measured_hz, confidence, stability, timestamp.
+      </module>
+
+      <module name="NoteEngine">
+        - Map measured_hz to note candidates (auto) and/or locked target.
+        - Compute cents offset and target frequency based on A4 reference.
+      </module>
+
+      <module name="UI">
+        - Keyboard view (interactive, highlight states).
+        - Tuner view (target + measured + cents gauge).
+        - Settings + diagnostics.
+      </module>
+
+      <module name="StateController">
+        - App state: Auto vs Locked target, selected note, hold mode.
+        - Debounce logic: require stable frames before “confirming” detection.
+      </module>
+
+      <module name="Persistence">
+        - Save/load settings (A4 reference, device, UI preferences).
+        - Export detection history.
+      </module>
+    </modules>
+
+    <data_flow>
+      AudioInput -> PitchEngine -> NoteEngine -> StateController -> UI
+    </data_flow>
+  </architecture>
+
+  <ui_components>
+    <keyboard_view>
+      - Range: A0 to C8 (configurable display subset).
+      - Interactions: click to set target note (locks), hover tooltip shows note + frequency.
+      - Visual states:
+        - Detected key highlight (e.g., glow)
+        - Target key highlight (e.g., outline)
+        - Low-confidence state (e.g., dashed outline + hint)
+    </keyboard_view>
+
+    <tuner_view>
+      - Elements:
+        - Target note label + target frequency
+        - Measured frequency label
+        - Cents offset numeric display
+        - Needle/slider/arc indicator centered at 0 cents, range at least ±50 cents
+        - “In Tune” indicator when |cents| <= tolerance AND stable
+      - Tolerances configurable (default in_tune=±2c, close=±5c)
+    </tuner_view>
+  </ui_components>
+
+  <settings>
+    <audio>
+      <device_selector>true</device_selector>
+      <sample_rate_default>48000</sample_rate_default>
+      <buffer_sizes>128,256,512,1024</buffer_sizes>
+      <noise_gate>
+        <enabled_default>true</enabled_default>
+        <threshold_db_default>-45</threshold_db_default>
+      </noise_gate>
+    </audio>
+
+    <tuning>
+      <reference_note>A4</reference_note>
+      <reference_frequency_default>440.0</reference_frequency_default>
+      <reference_frequency_range>415.0-466.0</reference_frequency_range>
+      <note_lock_default>false</note_lock_default>
+    </tuning>
+
+    <display>
+      <dark_mode>false</dark_mode>
+      <keyboard_labels>on_hover</keyboard_labels>
+      <animation_fps>60</animation_fps>
+    </display>
+  </settings>
+
+  <acceptance_criteria>
+    - When a user plays a single note in the midrange (C3–C6), the app reliably:
+      (a) identifies the nearest note name/octave, (b) highlights the corresponding key, and (c) shows cents offset.
+    - In locked mode (user selects e.g., C4), the tuner continues to show meaningful cents offset even if the measured
+      frequency is far from the true target.
+    - UI remains responsive while continuously listening for at least 10 minutes.
+    - Works on Windows/macOS/Linux with at least one common USB microphone and built-in laptop mic.
+  </acceptance_criteria>
+
+  <testing>
+    <unit_tests>
+      - Frequency->note mapping, cents computation, A4 reference changes.
+      - Pitch engine tested against synthetic sine waves across piano range.
+    </unit_tests>
+
+    <integration_tests>
+      - Record/replay audio fixtures (single notes at various detunes) to validate end-to-end detection.
+      - UI smoke tests: device switching, lock/unlock, hold mode.
+    </integration_tests>
+  </testing>
+
+  <delivery>
+    <artifacts>
+      - app_spec.txt (this file)
+      - source code repository with /src, /tests, /assets
+      - packaged installers for Windows/macOS/Linux
+      - user guide: “How to tune a piano with the app” (basic guidance + troubleshooting)
+    </artifacts>

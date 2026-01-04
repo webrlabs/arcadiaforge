@@ -1,16 +1,14 @@
 import asyncio
-import json
 import traceback
 import sys
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from arcadiaforge.orchestrator import SessionOrchestrator
-from arcadiaforge.output import set_live_terminal
-from arcadiaforge import output as af_output
-from arcadiaforge.web.backend.bridge import WebTerminal
+import multiprocessing as mp
+
+from arcadiaforge.config import get_default_model
+from arcadiaforge.web.backend.agent_worker import run_agent_worker
 
 router = APIRouter()
 
@@ -43,51 +41,35 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
         await websocket.close(code=4000, reason="Project not found")
         return
 
-    # Monkey patch console.print to also send to web terminal
-    original_print = af_output.console.print
-    terminal_ref = [None] 
+    # Note: We do NOT monkey-patch console.print anymore
+    # CLI output goes to server console, clean events go to WebTerminal via agent.py hooks
 
-    def patched_print(*args, **kwargs):
-        original_print(*args, **kwargs)
-        if terminal_ref[0]:
-            try:
-                msg = " ".join(str(a) for a in args)
-                terminal_ref[0].output(msg)
-            except:
-                pass
-
-    af_output.console.print = patched_print
+    ctx = mp.get_context("spawn")
+    input_queue = ctx.Queue()
+    output_queue = ctx.Queue()
+    model = get_default_model()
+    worker = ctx.Process(
+        target=run_agent_worker,
+        args=(str(project_dir), model, input_queue, output_queue),
+    )
 
     try:
-        terminal = WebTerminal()
-        terminal_ref[0] = terminal
-        
-        log_debug(f"[WS] Initializing orchestrator for {project_dir}")
-        
-        orchestrator = SessionOrchestrator(
-            project_dir=project_dir,
-            model="claude-3-5-sonnet-20241022", # Default model
-            enable_live_terminal=True
-        )
-        
-        orchestrator.live_terminal = terminal
-        set_live_terminal(terminal) 
-        
-        await terminal.start()
-        log_debug("[WS] Terminal started")
-
+        log_debug(f"[WS] Starting worker for {project_dir}")
+        worker.start()
+        log_debug(f"[WS] Worker started (pid={worker.pid})")
     except Exception as e:
-        log_debug(f"[WS] Error initializing orchestrator: {e}")
+        log_debug(f"[WS] Error starting worker: {e}")
         log_debug(traceback.format_exc())
         await websocket.close(code=1011, reason=f"Init error: {str(e)}")
-        af_output.console.print = original_print
         return
 
     # Task to pump events from Terminal -> WebSocket
     async def sender_task():
         try:
             while True:
-                event = await terminal.get_next_event()
+                event = await asyncio.to_thread(output_queue.get)
+                if event is None:
+                    break
                 await websocket.send_json(event)
         except Exception as e:
             log_debug(f"[WS] Sender task error: {e}")
@@ -97,43 +79,31 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
         try:
             while True:
                 data = await websocket.receive_text()
-                terminal.receive_input(data)
+                input_queue.put(data)
         except WebSocketDisconnect:
             log_debug("[WS] Client disconnected")
-            await terminal.stop()
         except Exception as e:
             log_debug(f"[WS] Receiver task error: {e}")
+        finally:
+            input_queue.put({"type": "shutdown"})
 
-    # Task to run the actual agent
-    async def agent_task():
+    async def monitor_task():
         try:
-            # First run detection logic (similar to CLI)
-            has_features = (project_dir / ".arcadia" / "project.db").exists()
-            app_spec = project_dir / "app_spec.txt"
-            
-            log_debug(f"[WS] Starting agent session... (has_features={has_features})")
-            
-            # Start the orchestrator
-            await orchestrator.run(
-                app_spec_path=app_spec if not has_features else None
-            )
-            
-            await terminal._emit("system", "Session ended", "info")
-            log_debug("[WS] Agent session ended normally")
+            await asyncio.to_thread(worker.join)
+            log_debug("[WS] Worker exited")
         except Exception as e:
-            error_msg = f"Critical Error: {str(e)}"
-            log_debug(f"[WS] {error_msg}")
-            log_debug(traceback.format_exc())
-            await terminal._emit("system", error_msg, "error")
+            log_debug(f"[WS] Worker join error: {e}")
+        finally:
+            output_queue.put(None)
 
     # Run everything concurrently
     try:
         sender = asyncio.create_task(sender_task())
         receiver = asyncio.create_task(receiver_task())
-        agent = asyncio.create_task(agent_task())
+        monitor = asyncio.create_task(monitor_task())
         
         done, pending = await asyncio.wait(
-            [agent, receiver], 
+            [monitor, receiver], 
             return_when=asyncio.FIRST_COMPLETED
         )
         
@@ -144,6 +114,15 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
     except Exception as e:
         log_debug(f"[WS] Main loop error: {e}")
     finally:
-        await terminal.stop()
-        af_output.console.print = original_print
-        log_debug("[WS] Connection closed, monkeypatch restored")
+        input_queue.put({"type": "shutdown"})
+        try:
+            await asyncio.to_thread(worker.join, 3)
+        except Exception:
+            pass
+        if worker.is_alive():
+            worker.terminate()
+            try:
+                await asyncio.to_thread(worker.join, 2)
+            except Exception:
+                pass
+        log_debug("[WS] Connection closed")

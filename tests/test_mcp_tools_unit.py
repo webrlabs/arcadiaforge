@@ -11,7 +11,6 @@ Usage:
 """
 
 import asyncio
-import json
 import os
 import sys
 import tempfile
@@ -22,17 +21,24 @@ import pytest
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from arcadiaforge.db import init_db
+from arcadiaforge.db.connection import get_session_maker, _engine
+from arcadiaforge.db.models import Feature as DBFeature
 
 @pytest.fixture
 def project_dir():
     """Create a temporary project directory for testing."""
     with tempfile.TemporaryDirectory(prefix="arcadia_test_") as tmpdir:
-        yield Path(tmpdir)
+        project_path = Path(tmpdir)
+        asyncio.run(init_db(project_path))
+        yield project_path
+        if _engine:
+            asyncio.run(_engine.dispose())
 
 
 @pytest.fixture
 def feature_list_file(project_dir):
-    """Create a test feature_list.json file."""
+    """Seed features in the database."""
     features = [
         {
             "description": "Test feature 1: User authentication",
@@ -51,10 +57,22 @@ def feature_list_file(project_dir):
             "passes": False
         }
     ]
-    feature_file = project_dir / "feature_list.json"
-    with open(feature_file, "w") as f:
-        json.dump(features, f, indent=2)
-    return feature_file
+    async def _seed():
+        session_maker = get_session_maker()
+        async with session_maker() as session:
+            for idx, feature in enumerate(features):
+                session.add(
+                    DBFeature(
+                        index=idx,
+                        category="functional",
+                        description=feature["description"],
+                        steps=[feature.get("test_command", "Run tests")],
+                        passes=feature["passes"],
+                    )
+                )
+            await session.commit()
+    asyncio.run(_seed())
+    return features
 
 
 def call_tool(tool_obj, args):

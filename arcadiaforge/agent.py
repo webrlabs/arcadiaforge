@@ -76,6 +76,8 @@ from arcadiaforge.output import (
     print_error,
     print_info,
     print_success,
+    get_live_terminal,
+    is_live_terminal_active,
 )
 
 
@@ -328,16 +330,70 @@ async def run_agent_session(
     tool_errors = 0
     tool_blocked = 0
 
+    # Chat interface: track tool IDs for proper event pairing
+    import uuid as uuid_module
+    tool_states: dict[str, dict] = {}
+    pending_tool_ids: list[str] = []
+
+    def _truncate_tool_result(text: str, limit: int = 1200) -> str:
+        if not text:
+            return ""
+        if len(text) <= limit:
+            return text
+        return text[:limit] + "\n... (truncated)"
+
+    def _extract_screenshot_url(tool_name: str, result_text: str) -> Optional[str]:
+        if tool_name != "mcp__puppeteer__puppeteer_screenshot" or not result_text:
+            return None
+
+        match = re.search(r"Screenshot captured and saved to:\s*([^\r\n]+)", result_text)
+        if not match:
+            return None
+
+        path_str = match.group(1).strip()
+        filename = Path(path_str).name
+        if not filename:
+            return None
+
+        screenshot_path = project_dir / "screenshots" / filename
+        if not screenshot_path.exists():
+            return None
+
+        project_id = project_dir.name
+        return f"projects/{project_id}/screenshots/{filename}"
+
+    # Helper to emit chat events when live terminal is active
+    def emit_chat_event(event_type: str, **kwargs):
+        if is_live_terminal_active():
+            terminal = get_live_terminal()
+            if event_type == "thinking":
+                terminal.emit_thinking(kwargs.get("is_thinking", False))
+            elif event_type == "agent_message":
+                terminal.emit_agent_message(kwargs.get("content", ""))
+            elif event_type == "tool_start":
+                terminal.emit_tool_start(
+                    kwargs.get("tool_id", ""),
+                    kwargs.get("name", ""),
+                    kwargs.get("summary", ""),
+                    kwargs.get("input_data")
+                )
+            elif event_type == "tool_end":
+                terminal.emit_tool_end(
+                    kwargs.get("tool_id", ""),
+                    kwargs.get("status", "completed"),
+                    kwargs.get("result"),
+                    kwargs.get("image_url")
+                )
+
     try:
+        # Emit thinking state
+        emit_chat_event("thinking", is_thinking=True)
+
         # Send the query (SDK may print errors directly to console)
         await client.query(message)
 
         # Collect response text and show tool use
         response_text = ""
-        last_tool_input = ""
-        last_tool_name = ""
-        last_tool_input_dict = {}
-        tool_start_time = None
 
         async for msg in client.receive_response():
             msg_type = type(msg).__name__
@@ -375,33 +431,36 @@ async def run_agent_session(
                     if block_type == "TextBlock" and hasattr(block, "text"):
                         response_text += block.text
                         print_agent_text(block.text)
+                        # Chat interface: emit agent message
+                        emit_chat_event("agent_message", content=block.text)
                     elif block_type == "ToolUseBlock" and hasattr(block, "name"):
-                        last_tool_name = block.name
-                        tool_start_time = time.time()
                         tool_calls += 1
+                        tool_use_id = getattr(block, "id", None) or str(uuid_module.uuid4())
+                        input_data = getattr(block, "input", None)
+                        input_str = str(input_data) if input_data is not None else ""
+                        input_dict = input_data if isinstance(input_data, dict) else {}
+                        tool_states[tool_use_id] = {
+                            "name": block.name,
+                            "input_str": input_str,
+                            "input_dict": input_dict,
+                            "start_time": time.time(),
+                        }
+                        pending_tool_ids.append(tool_use_id)
 
-                        if hasattr(block, "input"):
-                            input_str = str(block.input)
-                            last_tool_input = input_str
-                            last_tool_input_dict = block.input if isinstance(block.input, dict) else {}
-                            print_tool_use(block.name, input_str)
+                        print_tool_use(block.name, input_str)
+                        summary = input_str[:100] + "..." if len(input_str) > 100 else input_str
+                        emit_chat_event("tool_start", tool_id=tool_use_id, name=block.name, summary=summary, input_data=input_dict)
 
-                            # Phase 5: Risk assessment for tool calls
-                            if risk_classifier:
-                                risk_assessment = risk_classifier.assess(block.name, last_tool_input_dict)
-                                if risk_assessment.risk_level.value >= 4:  # HIGH or CRITICAL
-                                    print_warning(f"High-risk action: {risk_assessment.action} (level {risk_assessment.risk_level.name})")
+                        if risk_classifier:
+                            risk_assessment = risk_classifier.assess(block.name, input_dict)
+                            if risk_assessment.risk_level.value >= 4:  # HIGH or CRITICAL
+                                print_warning(f"High-risk action: {risk_assessment.action} (level {risk_assessment.risk_level.name})")
 
-                            # Log tool call event
-                            if obs:
-                                obs.log_tool_call(
-                                    tool_name=block.name,
-                                    tool_input=last_tool_input_dict,
-                                )
-                        else:
-                            print_tool_use(block.name, "")
-                            if obs:
-                                obs.log_tool_call(tool_name=block.name, tool_input={})
+                        if obs:
+                            obs.log_tool_call(
+                                tool_name=block.name,
+                                tool_input=input_dict,
+                            )
 
             # Handle UserMessage (tool results)
             elif msg_type == "UserMessage" and hasattr(msg, "content"):
@@ -412,13 +471,26 @@ async def run_agent_session(
                         result_content = getattr(block, "content", "")
                         is_error = getattr(block, "is_error", False)
                         result_str = str(result_content)
+                        result_preview = _truncate_tool_result(result_str)
                         result_lower = result_str.lower()
 
-                        # Calculate duration
-                        duration_ms = None
-                        if tool_start_time:
-                            duration_ms = int((time.time() - tool_start_time) * 1000)
-                            tool_start_time = None
+                        tool_use_id = getattr(block, "tool_use_id", None) or getattr(block, "id", None)
+                        tool_state = None
+                        if tool_use_id and tool_use_id in tool_states:
+                            tool_state = tool_states.pop(tool_use_id)
+                            if tool_use_id in pending_tool_ids:
+                                pending_tool_ids.remove(tool_use_id)
+                        elif pending_tool_ids:
+                            fallback_id = pending_tool_ids.pop(0)
+                            tool_state = tool_states.pop(fallback_id, None)
+                            tool_use_id = fallback_id
+
+                        tool_name = tool_state["name"] if tool_state else "unknown"
+                        tool_input_str = tool_state["input_str"] if tool_state else ""
+                        tool_input_dict = tool_state["input_dict"] if tool_state else {}
+                        start_time = tool_state["start_time"] if tool_state else None
+                        duration_ms = int((time.time() - start_time) * 1000) if start_time else None
+                        image_url = _extract_screenshot_url(tool_name, result_str)
 
                         # Check if command was blocked by security policy
                         # These are expected behaviors, not cyclic errors
@@ -430,15 +502,18 @@ async def run_agent_session(
                             "access denied" in result_lower
                         )
 
-                        if is_security_block:
-                            blocked_commands.append(last_tool_input)
+                        if is_error and is_security_block:
+                            blocked_commands.append(tool_input_str)
                             tool_blocked += 1
                             print_tool_result("blocked", result_str)
+                            # Chat interface: emit tool end with blocked status
+                            if tool_use_id:
+                                emit_chat_event("tool_end", tool_id=tool_use_id, status="failed", result=result_preview[:200])
 
                             # Log blocked event
                             if obs:
                                 obs.log_tool_result(
-                                    tool_name=last_tool_name,
+                                    tool_name=tool_name,
                                     success=False,
                                     is_blocked=True,
                                     error_message=result_str[:200],
@@ -451,11 +526,14 @@ async def run_agent_session(
                             error_texts.append(result_str[:500])
                             tool_errors += 1
                             print_tool_result("error", result_str)
+                            # Chat interface: emit tool end with error status
+                            if tool_use_id:
+                                emit_chat_event("tool_end", tool_id=tool_use_id, status="failed", result=result_preview[:200])
 
                             # Log error event
                             if obs:
                                 obs.log_tool_result(
-                                    tool_name=last_tool_name,
+                                    tool_name=tool_name,
                                     success=False,
                                     is_error=True,
                                     error_message=result_str[:200],
@@ -466,17 +544,29 @@ async def run_agent_session(
                                 autonomy_manager.record_outcome(success=False)
                         else:
                             print_tool_result("done")
+                            # Chat interface: emit tool end with completed status
+                            if tool_use_id:
+                                emit_chat_event(
+                                    "tool_end",
+                                    tool_id=tool_use_id,
+                                    status="completed",
+                                    result=result_preview,
+                                    image_url=image_url,
+                                )
 
                             # Log success event
                             if obs:
                                 obs.log_tool_result(
-                                    tool_name=last_tool_name,
+                                    tool_name=tool_name,
                                     success=True,
                                     duration_ms=duration_ms,
                                 )
                             # Phase 5: Record success for autonomy
                             if autonomy_manager:
                                 autonomy_manager.record_outcome(success=True)
+
+        # Chat interface: stop thinking indicator
+        emit_chat_event("thinking", is_thinking=False)
 
         print_session_divider()
 
@@ -523,6 +613,9 @@ async def run_agent_session(
         )
 
     except Exception as e:
+        # Chat interface: stop thinking on error
+        emit_chat_event("thinking", is_thinking=False)
+
         error_str = str(e)
 
         # Check for authentication errors - these should not retry

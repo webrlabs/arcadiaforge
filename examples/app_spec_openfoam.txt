@@ -1,0 +1,441 @@
+<project_specification>
+  <project_name>FoamSmith</project_name>
+  <tagline>ADK-based agent that generates version-correct OpenFOAM.com (OpenCFD) cases from natural language, backed by source + docs + tutorials with strict provenance.</tagline>
+
+  <overview>
+    Build an agent using Google’s Agent Development Kit (ADK) that specializes in generating complete, runnable
+    OpenFOAM.com (OpenCFD) CFD models (“cases”) including: case directory layout, dictionaries (system/controlDict,
+    fvSchemes, fvSolution), constant/transport & turbulence models, boundary conditions, mesh setup (blockMesh and/or
+    snappyHexMesh), run scripts, and post-processing function objects.
+
+    The agent must be “version-aware” because OpenFOAM.com uses frequent versioned releases and the exact dictionary
+    schema/features can change. The primary code context source is OpenFOAM.com’s GitLab under https://gitlab.com/openfoam
+    (focus on the core repo and OpenFOAM.com documentation repo + doc site). The agent must prioritize correctness over
+    creativity, and must cite which code/doc/tutorial fragments justify each generated configuration.
+  </overview>
+
+  <non_goals>
+    <item>Supporting OpenFOAM.org as a first-class target (out of scope; only compatibility notes allowed).</item>
+    <item>Designing novel turbulence/combustion models beyond what exists in the selected OpenFOAM.com version.</item>
+    <item>Running large HPC simulations; only lightweight validation and “smoke tests”.</item>
+  </non_goals>
+
+  <key_constraints>
+    <target_distribution>OpenFOAM.com / OpenCFD line (ESI/OpenCFD) as primary target.</target_distribution>
+    <primary_source_code>https://gitlab.com/openfoam (especially https://gitlab.com/openfoam/core/openfoam)</primary_source_code>
+    <primary_docs>https://doc.openfoam.com (versioned docs) and OpenFOAM documentation repo on GitLab</primary_docs>
+    <content_engineering_is_critical>true</content_engineering_is_critical>
+  </key_constraints>
+
+  <technology_stack>
+    <agent_framework>
+      <name>Google Agent Development Kit (ADK)</name>
+      <language>Python</language>
+      <install>pip install google-adk</install>
+      <notes>
+        ADK supports modular multi-agent hierarchies and workflow orchestration (Sequential/Parallel/Loop) plus LLM-driven
+        routing; agents can be built as LLM Agents, Workflow Agents, or Custom Agents inheriting BaseAgent.
+      </notes>
+      <references>
+        <ref>ADK overview and positioning as a modular framework: google.github.io/adk-docs</ref>
+        <ref>ADK agent types and hierarchy concepts: cloud.google.com/blog/.../multi-agent-systems-with-adk</ref>
+      </references>
+    </agent_framework>
+
+    <deployment_targets>
+      <local_dev>ADK dev UI + CLI for iterative development (local).</local_dev>
+      <cloud_option>Vertex AI Agent Engine Runtime for managed deployment (optional).</cloud_option>
+      <references>
+        <ref>Vertex AI Agent Builder ADK overview recommends Agent Engine: docs.cloud.google.com/.../agent-development-kit/overview</ref>
+      </references>
+    </deployment_targets>
+
+    <openfoam_context_sources>
+      <gitlab_core_repo>https://gitlab.com/openfoam/core/openfoam</gitlab_core_repo>
+      <gitlab_docs_repo>https://gitlab.com/openfoam/documentation</gitlab_docs_repo>
+      <versioned_doc_site>https://doc.openfoam.com</versioned_doc_site>
+      <examples_tutorials_site>https://doc.openfoam.com/&lt;version&gt;/examples/tutorials/</examples_tutorials_site>
+      <release_artifacts_site>https://dl.openfoam.com/source/&lt;version&gt;/</release_artifacts_site>
+      <notes>
+        The GitLab core repo is the authoritative source for syntax/implementation; the doc site provides versioned user
+        guidance and tutorials; release artifacts provide PDFs such as UserGuide/TutorialGuide.
+      </notes>
+      <references>
+        <ref>Core repo location: gitlab.com/openfoam/core/openfoam</ref>
+        <ref>Docs repo: gitlab.com/openfoam/documentation</ref>
+        <ref>Doc site versions: doc.openfoam.com</ref>
+        <ref>Examples/Tutorials in doc site: doc.openfoam.com/2312/examples/tutorials/</ref>
+        <ref>Release artifacts listing (example v2312): dl.openfoam.com/source/v2312/</ref>
+      </references>
+    </openfoam_context_sources>
+
+    <runtime_validation>
+      <container>Docker image containing OpenFOAM.com binaries for the target version(s), plus ParaView utilities as needed.</container>
+      <cli_tools>
+        <item>blockMesh</item>
+        <item>snappyHexMesh (optional)</item>
+        <item>checkMesh</item>
+        <item>simpleFoam / pisoFoam / pimpleFoam (case-dependent smoke test)</item>
+        <item>foamDictionary / foamInfo / postProcess (optional helpers)</item>
+      </cli_tools>
+    </runtime_validation>
+
+    <storage_and_index>
+      <object_store>GCS or local filesystem (dev) for raw corpora snapshots.</object_store>
+      <metadata_store>SQLite/Postgres for manifests, version mapping, and provenance.</metadata_store>
+      <retrieval>
+        <hybrid_search>BM25 over text + vector search for semantic recall.</hybrid_search>
+        <code_search>ripgrep/ctags/tree-sitter for precise symbol/dictionary-key lookups.</code_search>
+      </retrieval>
+    </storage_and_index>
+  </technology_stack>
+
+  <domain_problem_model>
+    <supported_user_intents>
+      <intent>Generate a new OpenFOAM case from a textual description.</intent>
+      <intent>Port/upgrade an existing case to a specific OpenFOAM.com version.</intent>
+      <intent>Explain why a dictionary entry is invalid for a given version and propose fixes.</intent>
+      <intent>Recommend a baseline tutorial case similar to the user’s scenario and adapt it.</intent>
+    </supported_user_intents>
+
+    <target_case_types>
+      <case>Incompressible RANS steady (simpleFoam)</case>
+      <case>Incompressible transient (pisoFoam/pimpleFoam)</case>
+      <case>Compressible (rhoPimpleFoam etc., as supported by version)</case>
+      <case>Multiphase basics (as supported by version; guarded by validation)</case>
+    </target_case_types>
+  </domain_problem_model>
+
+  <agent_architecture>
+    <topology>
+      <parent_agent name="FoamSmithOrchestrator" type="WorkflowAgent" mode="Sequential">
+        <description>
+          Orchestrates planning -> retrieval -> generation -> validation -> packaging. Uses deterministic stages for
+          reliability; delegates to specialists. Uses Loop stage for “fix-and-validate” iterations.
+        </description>
+
+        <sub_agents>
+          <agent name="VersionResolver" type="LlmAgent">
+            <responsibilities>
+              <item>Determine target OpenFOAM.com version (explicit or inferred).</item>
+              <item>Resolve dictionary schema differences using versioned docs + code.</item>
+              <item>Emit a “Version Contract” specifying allowed keys/features.</item>
+            </responsibilities>
+          </agent>
+
+          <agent name="ContextEngineer" type="CustomAgent">
+            <responsibilities>
+              <item>Build and maintain corpora snapshots per version: source, docs, tutorials, PDFs.</item>
+              <item>Chunking strategy specialized for OpenFOAM: dictionary-key sections, class docs, tutorial trees.</item>
+              <item>Provenance linking: every chunk maps to (repo, commit/tag, path, line-range) or (doc url, version).</item>
+              <item>Hybrid retrieval: BM25 for exact keys; vector for conceptual queries.</item>
+            </responsibilities>
+          </agent>
+
+          <agent name="CasePlanner" type="LlmAgent">
+            <responsibilities>
+              <item>Convert user goals into a structured case plan: physics, solver, turbulence, mesh strategy, BCs.</item>
+              <item>Select closest tutorial baseline(s) from versioned examples/tutorials and adapt.</item>
+              <item>Produce a checklist of dictionaries + files that must be generated.</item>
+            </responsibilities>
+          </agent>
+
+          <agent name="DictionaryAuthor" type="LlmAgent">
+            <responsibilities>
+              <item>Generate OpenFOAM dictionaries consistent with the Version Contract.</item>
+              <item>Attach citations to each non-trivial entry: (source code symbol or docs section or tutorial).</item>
+              <item>Emit “lint notes” (expected warnings, deprecated keys, alternatives).</item>
+            </responsibilities>
+          </agent>
+
+          <agent name="MeshAuthor" type="LlmAgent">
+            <responsibilities>
+              <item>Generate blockMeshDict and/or snappyHexMesh setup.</item>
+              <item>Ensure patch naming aligns with boundaryField dictionaries.</item>
+            </responsibilities>
+          </agent>
+
+          <agent name="RunnerValidator" type="CustomAgent">
+            <responsibilities>
+              <item>Materialize case on disk, run blockMesh/checkMesh, then a short solver run (few iterations/time steps).</item>
+              <item>Parse logs for fatal errors and common misconfigurations.</item>
+              <item>Return a structured error report and recommended edits (minimal diffs).</item>
+            </responsibilities>
+          </agent>
+
+          <agent name="Packager" type="CustomAgent">
+            <responsibilities>
+              <item>Output a complete case tree and a README explaining how to run and what was assumed.</item>
+              <item>Include a provenance manifest (JSON) listing every cited chunk used in generation.</item>
+            </responsibilities>
+          </agent>
+        </sub_agents>
+      </parent_agent>
+    </topology>
+
+    <orchestration_contract>
+      <stage name="S1_requirements_intake">
+        <inputs>
+          <item>physics description</item>
+          <item>geometry/mesh preference</item>
+          <item>solver preference (or let agent choose)</item>
+          <item>target version (optional)</item>
+        </inputs>
+        <outputs>
+          <item>normalized specification (CaseSpec)</item>
+        </outputs>
+      </stage>
+
+      <stage name="S2_version_resolution">
+        <outputs>
+          <item>VersionContract: {distribution=openfoam.com, version=vXXXX, solver_set, allowed_keys, deprecations}</item>
+        </outputs>
+      </stage>
+
+      <stage name="S3_context_retrieval">
+        <outputs>
+          <item>retrieval bundle: tutorial anchors + doc sections + code references (ranked)</item>
+        </outputs>
+      </stage>
+
+      <stage name="S4_generation">
+        <outputs>
+          <item>case tree + citations per file/section</item>
+        </outputs>
+      </stage>
+
+      <stage name="S5_validation_loop">
+        <loop max_iterations="3">
+          <step>run smoke tests</step>
+          <step>apply minimal diffs</step>
+          <step>re-run</step>
+        </loop>
+      </stage>
+
+      <stage name="S6_packaging">
+        <outputs>
+          <item>final case directory</item>
+          <item>README.md</item>
+          <item>provenance manifest</item>
+        </outputs>
+      </stage>
+    </orchestration_contract>
+  </agent_architecture>
+
+  <content_engineering>
+    <principles>
+      <item>Version-first: all retrieval and generation is scoped to a single OpenFOAM.com version unless user requests comparison.</item>
+      <item>Prefer tutorials as executable ground truth; then docs; then source code for definitive syntax/behavior.</item>
+      <item>Every generated non-trivial dictionary entry must be traceable to at least one retrieved chunk.</item>
+      <item>Hybrid retrieval: exact key lookups (BM25/code search) + semantic recall (vector).</item>
+    </principles>
+
+    <corpora>
+      <corpus name="openfoam_core_source">
+        <source>git clone https://gitlab.com/openfoam/core/openfoam</source>
+        <versioning>
+          <item>Index by release tags and/or branch heads as needed.</item>
+        </versioning>
+      </corpus>
+
+      <corpus name="openfoam_docs_repo">
+        <source>git clone https://gitlab.com/openfoam/documentation</source>
+      </corpus>
+
+      <corpus name="openfoam_versioned_docs">
+        <source>crawl https://doc.openfoam.com/&lt;version&gt;/</source>
+        <notes>Use the “tools/processing”, “fundamentals/case-structure”, and “examples/tutorials” sections heavily.</notes>
+      </corpus>
+
+      <corpus name="openfoam_pdfs_optional">
+        <source>download from https://dl.openfoam.com/source/&lt;version&gt;/ (UserGuide.pdf, TutorialGuide.pdf, ProgrammersGuide.pdf)</source>
+      </corpus>
+    </corpora>
+
+    <chunking_and_metadata>
+      <code_chunks>
+        <strategy>
+          <item>Chunk by file path + symbol (class/function) + nearby comment blocks.</item>
+          <item>For dictionary schemas, chunk by keyword tables / examples / parser-relevant blocks.</item>
+        </strategy>
+        <metadata>
+          <item>repo</item>
+          <item>commit_or_tag</item>
+          <item>path</item>
+          <item>line_start</item>
+          <item>line_end</item>
+          <item>symbol (optional)</item>
+        </metadata>
+      </code_chunks>
+
+      <doc_chunks>
+        <strategy>
+          <item>Chunk by heading hierarchy (H1/H2/H3) preserving examples.</item>
+          <item>Special handling for dictionary snippets: keep the entire snippet intact.</item>
+        </strategy>
+        <metadata>
+          <item>url</item>
+          <item>version</item>
+          <item>heading_path</item>
+        </metadata>
+      </doc_chunks>
+    </chunking_and_metadata>
+
+    <retrieval_api>
+      <function name="retrieve_context(query, version, top_k)">
+        <must_return>
+          <item>at least 2 tutorial/doc/code chunks when available</item>
+          <item>ranked list with confidence scores</item>
+        </must_return>
+      </function>
+      <function name="resolve_key_schema(key, version)">
+        <must_return>
+          <item>allowed/required fields</item>
+          <item>examples</item>
+          <item>deprecation notes</item>
+        </must_return>
+      </function>
+    </retrieval_api>
+  </content_engineering>
+
+  <tooling_and_integrations>
+    <tools>
+      <tool name="gitlab_snapshot_tool" type="Custom">
+        <purpose>Clone/pull OpenFOAM.com GitLab repos and pin snapshots by tag/commit.</purpose>
+      </tool>
+
+      <tool name="doc_crawler_tool" type="Custom">
+        <purpose>Fetch and cache versioned pages from doc.openfoam.com and extract structured chunks.</purpose>
+      </tool>
+
+      <tool name="hybrid_search_tool" type="Custom">
+        <purpose>BM25 + vector search across all corpora for the selected version.</purpose>
+      </tool>
+
+      <tool name="code_symbol_lookup" type="Custom">
+        <purpose>Fast lookup of symbols/keywords in the source tree (ripgrep/tree-sitter/ctags).</purpose>
+      </tool>
+
+      <tool name="case_renderer" type="Custom">
+        <purpose>Render a CaseSpec + dictionaries into an on-disk case tree with templates and guardrails.</purpose>
+      </tool>
+
+      <tool name="openfoam_runner" type="Custom">
+        <purpose>Run validation commands inside a pinned OpenFOAM container for the chosen version.</purpose>
+        <commands>
+          <item>blockMesh</item>
+          <item>checkMesh</item>
+          <item>simpleFoam -dry-run (if supported) or short iteration run</item>
+        </commands>
+      </tool>
+
+      <tool name="log_diagnoser" type="Custom">
+        <purpose>Parse OpenFOAM logs and map common errors to fix recipes + citations.</purpose>
+      </tool>
+    </tools>
+
+    <adk_binding>
+      <notes>
+        Implement tools as ADK-compatible tool interfaces; orchestrate with a WorkflowAgent for determinism,
+        and use LLM Agents where reasoning/generation is required.
+      </notes>
+    </adk_binding>
+  </tooling_and_integrations>
+
+  <data_models>
+    <model name="CaseSpec">
+      <field name="target_version" type="string"/>
+      <field name="solver" type="string"/>
+      <field name="physics" type="object"/>
+      <field name="materials" type="object"/>
+      <field name="mesh" type="object"/>
+      <field name="boundary_conditions" type="object"/>
+      <field name="numerics" type="object"/>
+      <field name="run_plan" type="object"/>
+      <field name="validation_level" type="enum" values="none,basic,smoke"/>
+    </model>
+
+    <model name="VersionContract">
+      <field name="distribution" type="string" value="openfoam.com"/>
+      <field name="version" type="string"/>
+      <field name="allowed_solvers" type="array"/>
+      <field name="dictionary_key_rules" type="object"/>
+      <field name="known_deprecations" type="array"/>
+      <field name="citation_bundle" type="array"/>
+    </model>
+
+    <model name="ProvenanceManifest">
+      <field name="case_id" type="string"/>
+      <field name="version" type="string"/>
+      <field name="artifacts" type="array"/>
+      <field name="citations" type="array"/>
+    </model>
+  </data_models>
+
+  <quality_and_evaluation>
+    <correctness_gates>
+      <gate name="schema_gate">
+        <description>All dictionaries must conform to VersionContract; no unknown keys without a cited justification.</description>
+      </gate>
+      <gate name="mesh_gate">
+        <description>checkMesh must pass without fatal errors; warnings must be summarized.</description>
+      </gate>
+      <gate name="solver_smoke_gate">
+        <description>Solver must start and advance at least a few iterations/steps without fatal IO/model errors.</description>
+      </gate>
+      <gate name="provenance_gate">
+        <description>Every generated file section over a threshold complexity must link to citations.</description>
+      </gate>
+    </correctness_gates>
+
+    <adk_evals>
+      <unit_tests>
+        <item>VersionResolver returns deterministic VersionContract for pinned versions.</item>
+        <item>DictionaryAuthor does not emit keys outside the contract.</item>
+      </unit_tests>
+      <golden_cases>
+        <item>Rebuild canonical tutorial variants (cavity, pitzDaily, cylinder) and validate smoke tests.</item>
+      </golden_cases>
+      <regression_metrics>
+        <item>validation pass rate</item>
+        <item>average fix-loop iterations</item>
+        <item>citation coverage percentage</item>
+      </regression_metrics>
+    </adk_evals>
+  </quality_and_evaluation>
+
+  <security_and_compliance>
+    <supply_chain>
+      <item>Pin OpenFOAM container images by digest per version.</item>
+      <item>Pin repo snapshots by commit/tag in provenance manifest.</item>
+    </supply_chain>
+
+    <execution_sandboxing>
+      <item>Run OpenFOAM commands in containers with restricted filesystem mounts.</item>
+      <item>Resource limits (CPU/mem/time) for smoke tests.</item>
+    </execution_sandboxing>
+
+    <licensing_notes>
+      <item>OpenFOAM core is GPLv3 (respect redistribution constraints for packaged artifacts and embedded code snippets).</item>
+      <item>Documentation repo has a Creative Commons license (respect reuse constraints in stored excerpts).</item>
+    </licensing_notes>
+  </security_and_compliance>
+
+  <deliverables>
+    <item>ADK Python agent package with multi-agent hierarchy as specified.</item>
+    <item>Content engineering pipeline: snapshot + crawl + hybrid index + provenance.</item>
+    <item>CLI / API endpoint: “generate_case”, “upgrade_case”, “validate_case”, “explain_error”.</item>
+    <item>Example outputs: 3 generated cases per version with passing smoke tests.</item>
+    <item>Operator docs: how to add a new OpenFOAM.com version (snapshot + index + container).</item>
+  </deliverables>
+
+  <references>
+    <ref desc="ADK docs home (install + features)">https://google.github.io/adk-docs/</ref> <!-- :contentReference[oaicite:0]{index=0} -->
+    <ref desc="ADK on Google Cloud / Agent Engine positioning">https://docs.cloud.google.com/agent-builder/agent-development-kit/overview</ref> <!-- :contentReference[oaicite:1]{index=1} -->
+    <ref desc="ADK multi-agent types (LLM/Workflow/Custom)">https://cloud.google.com/blog/topics/developers-practitioners/building-collaborative-ai-a-developers-guide-to-multi-agent-systems-with-adk</ref> <!-- :contentReference[oaicite:2]{index=2} -->
+    <ref desc="OpenFOAM.com core repo (authoritative source)">https://gitlab.com/openfoam/core/openfoam</ref> <!-- :contentReference[oaicite:3]{index=3} -->
+    <ref desc="OpenFOAM documentation repo">https://gitlab.com/openfoam/documentation</ref> <!-- :contentReference[oaicite:4]{index=4} -->
+    <ref desc="OpenFOAM versioned docs and tutorials example">https://doc.openfoam.com/2312/examples/tutorials/</ref> <!-- :contentReference[oaicite:5]{index=5} -->
+    <ref desc="Release artifacts listing (PDF guides example)">https://dl.openfoam.com/source/v2312/</ref> <!-- :contentReference[oaicite:6]{index=6} -->
+  </references>
+</project_specification>

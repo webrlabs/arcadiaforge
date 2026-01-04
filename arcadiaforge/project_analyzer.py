@@ -18,6 +18,7 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Any
 
+from arcadiaforge.config import get_default_model
 from arcadiaforge.output import print_info, print_subheader, print_muted, print_warning, console, icon
 
 
@@ -254,6 +255,15 @@ class ProjectAnalyzer:
         self.project_dir = project_dir
         self.spec_path = project_dir / "app_spec.txt"
 
+    def _read_spec_text(self) -> str:
+        try:
+            return self.spec_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            try:
+                return self.spec_path.read_text(encoding="cp1252")
+            except UnicodeDecodeError:
+                return self.spec_path.read_text(encoding="utf-8", errors="replace")
+
     def analyze(self) -> ProjectAnalysis:
         """
         Analyze the project specification and return tool recommendations.
@@ -268,7 +278,7 @@ class ProjectAnalyzer:
                 profile=TOOL_PROFILES[ProjectType.UNKNOWN],
             )
 
-        spec_text = self.spec_path.read_text(encoding="utf-8").lower()
+        spec_text = self._read_spec_text().lower()
 
         # Score each project type based on keyword matches
         scores: Dict[ProjectType, float] = {}
@@ -525,7 +535,7 @@ def parse_agent_response(response_text: str) -> Optional[AgentToolSelection]:
         return None
 
 
-async def analyze_project_with_agent(project_dir: Path, model: str = "claude-sonnet-4-20250514") -> Optional[ProjectAnalysis]:
+async def analyze_project_with_agent(project_dir: Path, model: str = None) -> Optional[ProjectAnalysis]:
     """
     Use Claude to analyze the project spec and select appropriate tools.
 
@@ -534,19 +544,22 @@ async def analyze_project_with_agent(project_dir: Path, model: str = "claude-son
 
     Args:
         project_dir: Path to the project directory
-        model: Claude model to use (defaults to fast Sonnet)
+        model: Claude model to use (defaults to configured model from env/config)
 
     Returns:
         ProjectAnalysis if successful, None if analysis fails
     """
     from anthropic import Anthropic
 
+    if model is None:
+        model = get_default_model()
+
     spec_path = project_dir / "app_spec.txt"
     if not spec_path.exists():
         print_warning("No app_spec.txt found for agent analysis")
         return None
 
-    spec_content = spec_path.read_text(encoding="utf-8")
+    spec_content = ProjectAnalyzer(project_dir)._read_spec_text()
 
     # Truncate if too long (save tokens)
     if len(spec_content) > 8000:

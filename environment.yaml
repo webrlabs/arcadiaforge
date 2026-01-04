@@ -8,6 +8,11 @@ dependencies:
   - pytest-asyncio
   - python-dotenv
   - rich
+  - fastapi
+  - uvicorn
+  - websockets
+  - python-multipart
   - pip
   - pip:
       - claude-code-sdk
+      - mcp-server-fetch

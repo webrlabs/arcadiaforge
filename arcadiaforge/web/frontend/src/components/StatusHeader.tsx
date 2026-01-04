@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Typography } from '@mui/material';
-import { Clock, User, CheckCircle2 } from 'lucide-react';
+import { Clock, CheckCircle2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 
@@ -12,7 +12,7 @@ const StatusHeader: React.FC<StatusHeaderProps> = ({ projectId }) => {
   // We can use the 'sessions' table to get the latest session status
   const { data: sessions } = useQuery({
     queryKey: ['table', projectId, 'sessions'],
-    queryFn: () => api.getTableData(projectId, 'sessions', 1),
+    queryFn: () => api.getTableData(projectId, 'sessions', 1, 0, 'desc'),
     refetchInterval: 2000
   });
 
@@ -26,7 +26,20 @@ const StatusHeader: React.FC<StatusHeaderProps> = ({ projectId }) => {
   const [elapsedTime, setElapsedTime] = useState('00:00:00');
   
   const activeSession = sessions && sessions.length > 0 ? sessions[0] : null;
-  const isRunning = activeSession?.status === 'running';
+  const sessionStatus = (activeSession?.status || '').toString().toLowerCase();
+  const isRunning = sessionStatus === 'running' || (!activeSession?.end_time && !!activeSession?.start_time);
+
+  let statusLabel = 'IDLE';
+  let statusColor = '#9AA4B2';
+  if (activeSession) {
+    if (isRunning) {
+      statusLabel = 'RUNNING';
+      statusColor = '#22C55E';
+    } else if (sessionStatus) {
+      statusLabel = sessionStatus.replace(/_/g, ' ').toUpperCase();
+      statusColor = ['failed', 'error', 'intervention', 'cyclic', 'no_progress'].includes(sessionStatus) ? '#EF4444' : '#F59E0B';
+    }
+  }
 
   // Calculate stats
   const totalFeatures = features ? features.length : 0;
@@ -64,9 +77,17 @@ const StatusHeader: React.FC<StatusHeaderProps> = ({ projectId }) => {
       </Box>
       
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <User size={14} color={isRunning ? "#F59E0B" : "#9AA4B2"} />
-        <Typography variant="caption" sx={{ color: isRunning ? "secondary.main" : "text.secondary", fontWeight: 'bold' }}>
-          {isRunning ? `SESSION #${activeSession.id}` : "IDLE"}
+        <Box
+          sx={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            bgcolor: statusColor,
+            boxShadow: isRunning ? `0 0 6px ${statusColor}` : 'none',
+          }}
+        />
+        <Typography variant="caption" sx={{ color: statusColor, fontWeight: 'bold' }}>
+          {statusLabel}
         </Typography>
       </Box>
       

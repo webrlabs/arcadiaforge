@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, TextField, Button, IconButton, Typography, 
-  Select, MenuItem, FormControl, InputLabel, Paper, Chip
+import {
+  Box, TextField, Button, IconButton, Typography,
+  Select, MenuItem, FormControl, InputLabel
 } from '@mui/material';
 import { Trash2, Plus, Save, CheckCircle2, CircleDashed, AlertOctagon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { type FeatureUpdate } from '../services/api';

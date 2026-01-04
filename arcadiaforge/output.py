@@ -1107,9 +1107,9 @@ class ToolOutputTracker:
         content: str
     ) -> None:
         """Print a tool call with its result on the same line."""
-        # Route through live terminal if active
+        # Skip CLI output when live terminal is active
+        # agent.py now emits tool events directly via emit_tool_start/emit_tool_end
         if is_live_terminal_active():
-            _LIVE_TERMINAL.output_tool(tool_name, summary, result_type)
             return
 
         # Sanitize summary and content for Windows encoding

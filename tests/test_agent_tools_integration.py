@@ -28,6 +28,7 @@ dotenv.load_dotenv()
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from arcadiaforge.client import create_client
+from arcadiaforge.config import get_default_model
 from arcadiaforge.output import (
     console,
     print_banner,
@@ -92,17 +93,20 @@ Start by adding the test features to the database, then test each tool category.
 """
 
 
-async def run_tool_test(project_dir: Path, model: str = "claude-sonnet-4-5-20250929") -> dict:
+async def run_tool_test(project_dir: Path, model: str = None) -> dict:
     """
     Run the agent tool testing session.
 
     Args:
         project_dir: Directory for the test project
-        model: Claude model to use
+        model: Claude model to use (defaults to configured model from env/config)
 
     Returns:
         dict with test results
     """
+    if model is None:
+        model = get_default_model()
+
     print_header("Agent Tool Integration Test")
     print_info(f"Project directory: {project_dir}")
     print_info(f"Model: {model}")

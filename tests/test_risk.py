@@ -152,7 +152,7 @@ class TestRiskClassifierInit:
         # Check for some known patterns
         pattern_ids = [p.pattern_id for p in classifier.patterns]
 
-        assert "feature_list_write" in pattern_ids
+        assert "feature_database_write" in pattern_ids
         assert "git_push" in pattern_ids
         assert "rm_recursive" in pattern_ids
 
@@ -183,9 +183,9 @@ class TestRiskAssessmentMethods:
 
         assert assessment.risk_level == RiskLevel.MODERATE
 
-    def test_assess_feature_list_write(self, classifier):
-        """Test assessing feature_list.json write."""
-        assessment = classifier.assess("Write", {"file_path": "/project/feature_list.json"})
+    def test_assess_feature_database_write(self, classifier):
+        """Test assessing feature database write."""
+        assessment = classifier.assess("Write", {"file_path": "/project/.arcadia/project.db"})
 
         assert assessment.risk_level == RiskLevel.HIGH
         assert assessment.affects_source_of_truth is True

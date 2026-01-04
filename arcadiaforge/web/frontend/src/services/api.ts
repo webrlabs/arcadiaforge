@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:8000/api';
+export const API_BASE = 'http://localhost:8000/api';
 export const WS_BASE = 'ws://localhost:8000/ws';
 
 export interface Project {
@@ -27,9 +27,9 @@ export const api = {
     return res.data;
   },
 
-  getTableData: async (projectId: string, table: string, limit = 100, offset = 0) => {
+  getTableData: async (projectId: string, table: string, limit = 100, offset = 0, order: 'asc' | 'desc' = 'asc') => {
     const res = await axios.get(`${API_BASE}/projects/${projectId}/db/${table}`, {
-      params: { limit, offset }
+      params: { limit, offset, order }
     });
     return res.data;
   },

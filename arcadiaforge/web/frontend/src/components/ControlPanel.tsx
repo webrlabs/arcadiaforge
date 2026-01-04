@@ -1,9 +1,6 @@
 import React from 'react';
 import { Box, IconButton, Tooltip, Divider } from '@mui/material';
-import { 
-  Play, Pause, Square, Trash2, SkipForward, AlertCircle, 
-  MessageSquare
-} from 'lucide-react';
+import { Pause, Square, Trash2, SkipForward } from 'lucide-react';
 
 interface ControlPanelProps {
   onStop: () => void;

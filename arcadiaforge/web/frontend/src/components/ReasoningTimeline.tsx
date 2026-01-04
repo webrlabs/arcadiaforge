@@ -1,10 +1,7 @@
 import React, { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { Box, Typography, Paper, Chip, CircularProgress, Alert } from '@mui/material';
-import { 
-  GitMerge, Lightbulb, Flag, CheckCircle2, AlertTriangle, 
-  HelpCircle, Split 
-} from 'lucide-react';
+import { GitMerge, Lightbulb, Flag, CheckCircle2, HelpCircle } from 'lucide-react';
 import { api } from '../services/api';
 
 interface TimelineEvent {

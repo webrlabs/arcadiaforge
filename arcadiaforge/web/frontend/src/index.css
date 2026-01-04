@@ -2,6 +2,21 @@
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
+
+  /* Default theme variables (dark) - will be overridden by ThemeContext */
+  --scrollbar-track: #1a1a1a;
+  --scrollbar-thumb: #333;
+  --scrollbar-thumb-hover: #22D3EE;
+  --bg-default: #121212;
+}
+
+/* Light theme defaults for initial flash prevention */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --scrollbar-track: #E2E8F0;
+    --scrollbar-thumb: #94A3B8;
+    --bg-default: #F8FAFC;
+  }
 }
 
 body {
@@ -10,7 +25,8 @@ body {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background-color: #121212;
+  background-color: var(--bg-default);
+  transition: background-color 0.2s ease;
 }
 
 #root {
@@ -25,20 +41,20 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #22D3EE; /* Arcadia Cyan on hover */
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* For Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #333 #1a1a1a;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }

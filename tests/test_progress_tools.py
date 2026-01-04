@@ -42,7 +42,7 @@ def sample_progress():
             {
                 "session_id": 1,
                 "timestamp": "2024-01-15T10:00:00+00:00",
-                "accomplished": ["Set up project structure", "Created feature_list.json"],
+                "accomplished": ["Set up project structure", "Added features to the database"],
                 "tests_completed": [],
                 "tests_status": "0/50 passing",
                 "issues_found": ["Missing TypeScript config"],

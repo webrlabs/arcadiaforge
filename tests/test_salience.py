@@ -5,12 +5,13 @@ Tests for Salience Scoring
 Tests for the salience scoring system in feature_list.py.
 """
 
-import json
+import asyncio
 import pytest
 import tempfile
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
+from arcadiaforge.db import init_db
 from arcadiaforge.feature_list import (
     Feature,
     FeatureList,
@@ -26,7 +27,9 @@ from arcadiaforge.feature_list import (
 def temp_project():
     """Create a temporary project directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        yield Path(tmpdir)
+        project_dir = Path(tmpdir)
+        asyncio.run(init_db(project_dir))
+        yield project_dir
 
 
 @pytest.fixture
@@ -43,9 +46,14 @@ def feature_list(temp_project):
         {"category": "functional", "description": "Authentication flow", "steps": ["Step 1"], "passes": False, "priority": 2, "blocked_by": [0]},
     ]
 
-    with open(temp_project / "feature_list.json", "w") as f:
-        json.dump(features_data, f)
+    fl.add_features_from_list(features_data)
+    for idx, data in enumerate(features_data):
+        feature = fl._features[idx]
+        feature.priority = data.get("priority", feature.priority)
+        feature.blocked_by = data.get("blocked_by", [])
+        feature.passes = data.get("passes", False)
 
+    fl.save()
     fl.load()
     return fl
 
@@ -486,9 +494,7 @@ class TestFeatureListSalienceMethods:
         features_data = [
             {"category": "functional", "description": "Test", "steps": ["Step 1"], "passes": False},
         ]
-        with open(temp_project / "feature_list.json", "w") as f:
-            json.dump(features_data, f)
-        fl1.load()
+        fl1.add_features_from_list(features_data)
 
         # Modify salience fields
         fl1.set_priority(0, 1)

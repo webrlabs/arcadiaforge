@@ -1,18 +1,33 @@
 ```bash
-      _                        _ _       ______                   
-     / \   _ __ ___ __ _   ___| (_) __ _|  ____|__  _ __ __ _  ___ 
+      _                        _ _       ______
+     / \   _ __ ___ __ _   ___| (_) __ _|  ____|__  _ __ __ _  ___
     / _ \ | '__/ __/ _` | / _ | | |/ _` | |__ / _ \| '__/ _` |/ _ \
    / ___ \| | | (_| (_| || (_)| | | (_| |  __| (_) | | | (_| |  __/
   /_/   \_\_|  \___\__,_| \___|_|_|\__,_|_|   \___/|_|  \__, |\___|
-                                                        |___/        
+                                                        |___/
                      Autonomous Coding Framework
 ```
 
 # Arcadia Forge
 
-An advanced harness for long-running autonomous coding, built on the Claude Agent SDK. This project is based on the Anthropic [autonomous-coding quickstart](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding) and extends it with sophisticated orchestration, safety, and observability features.
+An advanced harness for long-running autonomous coding, built on the Claude Agent SDK. This project extends the Anthropic [autonomous-coding quickstart](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding) with enterprise-grade orchestration, safety, state management, and observability features.
 
 **Cross-Platform Support:** Works on Windows, macOS, and Linux with platform-specific init scripts and commands.
+
+## Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Multi-Session Development** | Split work across many sessions with auto-continue and crash recovery |
+| **Database-Backed State** | SQLite persistence for features, memory, checkpoints, and events |
+| **200+ Feature Management** | Test cases with steps, dependencies, audit tracking, and evidence screenshots |
+| **Defense-in-Depth Security** | Allowlist-based command validation, sandboxed bash, risk classification |
+| **Cost Control** | Real-time budget tracking with configurable USD limits |
+| **5-Level Autonomy** | Graduated levels from OBSERVE to FULL_AUTO with action gating |
+| **Tiered Memory System** | Hot/Warm/Cold memory for efficient long-running context management |
+| **Automated Auditing** | Periodic feature review with high-risk change detection |
+| **Web Dashboard** | Real-time progress monitoring and activity visualization |
+| **50+ Built-in Tools** | File ops, browser control, process management, evidence capture |
 
 ## Installation
 
@@ -89,54 +104,89 @@ For a quick test run with limited iterations:
 python -m arcadiaforge --project-dir ./my_project --max-iterations 3
 ```
 
-### Additional CLI Tools
+### CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `autonomous-agent` | Primary entry point for autonomous coding |
+| `python -m arcadiaforge` | Primary entry point for autonomous coding |
+| `python -m arcadiaforge processes` | Show tracked development processes |
+| `python -m arcadiaforge cleanup` | Clean up tracked processes |
+| `python -m arcadiaforge dashboard` | Start the web dashboard |
 | `checkpoint-cli` | Manage project checkpoints and rollbacks |
 | `events-cli` | Inspect session events and history |
+| `feature-cli` | Manage features database |
 | `metrics-cli` | View performance metrics |
 
 ## Important Timing Expectations
 
 > **Warning: This demo takes a long time to run!**
 
-- **First session (initialization):** The agent generates a `feature_list.json` with 200 test cases. This takes several minutes and may appear to hang - this is normal. The agent is writing out all the features.
+- **First session (initialization):** The agent generates 200+ test cases in the database. This takes several minutes and may appear to hang - this is normal. The agent is writing out all the features.
 
 - **Subsequent sessions:** Each coding iteration can take **5-15 minutes** depending on complexity.
 
-- **Full app:** Building all 200 features typically requires **many hours** of total runtime across multiple sessions.
+- **Full app:** Building all 200+ features typically requires **many hours** of total runtime across multiple sessions.
 
 **Tip:** The 200 features parameter in the prompts is designed for comprehensive coverage. If you want faster demos, you can modify `arcadiaforge/prompts/initializer_prompt.md` to reduce the feature count (e.g., 20-50 features for a quicker demo).
 
 ## How It Works
 
-### Core Capabilities
+### Core Architecture
 
-Arcadia Forge extends the basic autonomous coding pattern with several enterprise-grade features:
+Arcadia Forge uses a sophisticated multi-component architecture:
 
-- **Advanced Auditing:** Automated, periodic review of completed features with targeted detection for high-risk changes (security, payments, sensitive data).
-- **Cost Control & Budgeting:** Configurable USD budget limits with real-time usage tracking and safety cutoffs to prevent runaway costs.
-- **Semantic Checkpointing:** Git-integrated state management that allows for reliable session rollbacks, semantic versioning of progress, and graceful pause/resume.
-- **Risk-Aware Safety:** Pre-execution risk classification (Levels 1-5) for every tool call, with configurable gating and safety protocols.
-- **Intelligent Escalation:** A rules-based engine that triggers human intervention for low-confidence decisions, repeated failures, or high-risk operations.
-- **Automated Failure Analysis:** Root-cause detection with pattern matching across sessions and automated fix suggestions.
-- **Tiered Memory System:** Optimized context management using Hot, Warm, and Cold memory tiers to maintain efficiency in long-running projects.
-- **Observability & Metrics:** Comprehensive event logging, performance metrics, and structured traceability for every agent decision.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     SessionOrchestrator                         │
+│  (Main loop: setup → execution → result processing → cleanup)   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│  Agent.py     │    │  FeatureList  │    │  MemoryMgr    │
+│  (Claude SDK) │    │  (SQLite DB)  │    │  (Hot/Warm/   │
+│               │    │               │    │   Cold)       │
+└───────────────┘    └───────────────┘    └───────────────┘
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌───────────────────────────────────────────────────────────────┐
+│                    .arcadia/project.db                        │
+│  (Features, Sessions, Events, Memory, Checkpoints, Decisions) │
+└───────────────────────────────────────────────────────────────┘
+```
 
 ### Two-Agent Pattern
 
-1. **Initializer Agent (Session 1):** Reads `app_spec.txt`, creates `feature_list.json` with 200 test cases, sets up project structure, and initializes git.
+1. **Initializer Agent (Session 1):** Reads `app_spec.txt`, creates 200+ features in the database with detailed test steps, sets up project structure, and initializes git.
 
-2. **Coding Agent (Sessions 2+):** Picks up where the previous session left off, implements features one by one, and marks them as passing in `feature_list.json`.
+2. **Coding Agent (Sessions 2+):** Picks up where the previous session left off, implements features one by one, captures evidence screenshots, and marks them as passing.
 
 ### Session Management
 
 - Each session runs with a fresh context window
-- Progress is persisted via `feature_list.json` and git commits
+- Progress is persisted in `.arcadia/project.db` and via git commits
 - The agent auto-continues between sessions (3 second delay)
 - Press `Ctrl+C` to pause; run the same command to resume
+- Crash recovery via `session_state.json`
+
+### Autonomy Levels
+
+The framework supports five graduated autonomy levels:
+
+| Level | Description | Allowed Actions |
+|-------|-------------|-----------------|
+| OBSERVE | Watch only | Read operations |
+| PLAN | Can plan | Read + planning |
+| EXECUTE_SAFE | Safe execution | Read + safe writes |
+| EXECUTE_REVIEW | With review | All with human review |
+| FULL_AUTO | Full autonomy | All operations |
+
+### Tiered Memory System
+
+- **Hot Memory:** Current session working state (recent actions, active errors, pending decisions)
+- **Warm Memory:** Previous session summaries (features completed, patterns discovered, warnings)
+- **Cold Memory:** Historical knowledge base (proven patterns, solutions, aggregate statistics)
 
 ## Security Model
 
@@ -144,7 +194,9 @@ This demo uses a defense-in-depth security approach (see `arcadiaforge/security.
 
 1. **OS-level Sandbox:** Bash commands run in an isolated environment
 2. **Filesystem Restrictions:** File operations restricted to the project directory only
-3. **Platform-Aware Allowlist:** Only specific commands are permitted, with platform-specific variations:
+3. **Risk Classification:** Every tool call is classified (Low/Medium/High/Critical)
+4. **Auto-Checkpoints:** Triggered before destructive operations
+5. **Platform-Aware Allowlist:** Only specific commands are permitted:
 
 **Common Commands (all platforms):**
 - File inspection: `ls`, `cat`, `head`, `tail`, `wc`, `grep`
@@ -163,55 +215,110 @@ This demo uses a defense-in-depth security approach (see `arcadiaforge/security.
 - Commands: `dir`, `type`, `start`, `powershell`
 - Init scripts: `init.bat`, `init.ps1`
 
-Commands not in the allowlist are blocked by the security hook.
+### Auto-Checkpoint Triggers
 
+Checkpoints are automatically created before:
+- `git push` / `git push -f`
+- `git reset` / `git revert`
+- `rm -rf` / `rmdir /s`
+- `drop table` / `drop database`
+- `npm uninstall` / `pip uninstall`
 
 ## Project Structure
 
 ```
-arcadia-forge/
-|- autonomous_agent.py            # Compatibility wrapper
-|- pyproject.toml                 # Package metadata and entrypoints
-|- requirements.txt               # Python dependencies
-|- arcadiaforge/                  # Main package
-|     |- cli/                     # CLI entry points (autonomous-agent, checkpoint-cli, etc.)
-|     |- agent.py                 # Agent session logic
-|     |- audit.py                 # Automated feature auditing
-|     |- checkpoint.py            # Semantic checkpointing and rollbacks
-|     |- client.py                # Claude SDK client configuration
-|     |- decision.py              # Decision logging and rationale capture
-|     |- escalation.py            # Human-in-the-loop escalation engine
-|     |- failure_analysis.py      # Automated root-cause and pattern detection
-|     |- orchestrator.py          # High-level agent coordination
-|     |- risk.py                  # Risk classification and gating
-|     |- observability.py         # Metrics and event logging
-|     |- security.py              # Command allowlist and validation
-|     |- platform_utils.py        # Cross-platform OS detection utilities
-|     |- prompts/                 # Agent instructions and templates
-|     `- memory/                  # Tiered memory system (Hot/Warm/Cold)
-`- tests/                         # Comprehensive pytest suite
+arcadiaforge/
+├── __main__.py                 # Module entry with subcommands
+├── orchestrator.py             # SessionOrchestrator - main control loop
+├── agent.py                    # Claude SDK integration
+├── client.py                   # SDK client factory with MCP servers
+│
+├── Feature Management
+├── feature_list.py             # Database-backed Feature class
+├── feature_tools.py            # MCP tools: feature_*, evidence_*
+│
+├── Security & Capabilities
+├── security.py                 # Command allowlist and hooks
+├── capabilities.py             # System capability detection
+├── platform_utils.py           # Cross-platform utilities
+│
+├── State & Memory
+├── checkpoint.py               # Git-integrated checkpoints
+├── session_state.py            # Crash recovery state
+├── memory/                     # Tiered memory system
+│
+├── Autonomy & Risk
+├── autonomy.py                 # 5-level autonomy management
+├── risk.py                     # Risk classification
+│
+├── Tool Servers (Custom MCP)
+├── file_tools.py               # File operations
+├── process_tools.py            # Process tracking
+├── server_tools.py             # Dev server control
+├── evidence_tools.py           # Screenshot evidence
+├── puppeteer_helpers.py        # Browser automation helpers
+├── native_screenshot.py        # Desktop screenshots
+│
+├── Analysis & Observability
+├── observability.py            # Event logging
+├── metrics.py                  # Performance metrics
+├── failure_analysis.py         # Root-cause detection
+├── stall_detection.py          # Progress stall detection
+│
+├── Human Interface
+├── escalation.py               # Escalation engine
+├── human_interface.py          # User interaction
+├── live_terminal.py            # Async terminal UI
+│
+├── Database
+├── db/
+│   ├── connection.py           # Async SQLite connection
+│   └── models.py               # SQLAlchemy ORM models
+│
+├── Web Interface
+├── web/
+│   ├── dashboard.py            # FastAPI server
+│   ├── backend/                # Backend services
+│   └── frontend/               # Frontend application
+│
+├── Prompts
+├── prompts/
+│   ├── initializer_prompt.md   # Session 1 instructions
+│   ├── coding_prompt.md        # Coding session instructions
+│   ├── audit_prompt.md         # Feature audit instructions
+│   └── platform_instructions.py
+│
+└── CLI Entrypoints
+    └── cli/
+        ├── autonomous_agent.py # Main CLI
+        ├── checkpoint_cli.py   # Checkpoint management
+        ├── events_cli.py       # Event inspection
+        ├── feature_cli.py      # Feature management
+        └── metrics_cli.py      # Metrics viewing
 ```
 
 ## Generated Project Structure
 
-After running, your project directory will contain several metadata files and directories used for tracking progress and ensuring safety:
+After running, your project directory will contain:
 
-**Common Metadata:**
-- `feature_list.json`: The source of truth for all test cases and implementation status.
-- `claude-progress.json`: High-level session progress log.
-- `.events.jsonl`: Append-only event log for full session reconstruction and observability.
-- `.metrics_cache.json`: Cached performance metrics for the project.
-- `.risk/`: Directory containing risk assessments and custom risk patterns.
-- `.failure_reports/`: Automated analysis reports for failed sessions.
-- `.audit_state.json`: Tracking state for periodic feature auditing.
-- `troubleshooting.json`: Shared knowledge base for common issues and fixes.
-- `.claude_settings.json`: Security settings and project-specific configurations.
-
-**Platform-Specific Scripts:**
-- `init.sh` (Linux/macOS) or `init.bat`/`init.ps1` (Windows): Environment setup scripts.
-
-**Application Code:**
-- The generated application files will be located in the project root or a specified subdirectory.
+```
+my_project/
+├── .arcadia/                   # Agent metadata (gitignored)
+│   ├── project.db              # SQLite database (features, memory, sessions)
+│   └── session_state.json      # Crash recovery context
+├── .events.jsonl               # Append-only event log
+├── screenshots/                # Browser/desktop screenshots
+├── verification/               # Evidence screenshots for features
+├── .claude_settings.json       # Security permissions
+├── claude-progress.json        # Session progress
+├── .audit_state.json           # Audit tracking
+├── .metrics_cache.json         # Performance metrics
+├── troubleshooting.json        # Knowledge base
+├── init.sh / init.bat / init.ps1  # Platform-specific setup
+├── .gitignore
+├── README.md
+└── [application code]          # Generated based on app_spec
+```
 
 ## Running the Generated Application
 
@@ -273,6 +380,20 @@ The application will typically be available at `http://localhost:3000` or simila
 | `--max-iterations` | Max agent iterations | Unlimited |
 | `--model` | Claude model to use | `claude-sonnet-4-5-20250929` |
 
+## Web Dashboard
+
+Start the real-time monitoring dashboard:
+
+```bash
+python -m arcadiaforge dashboard --project-dir ./my_project --port 8080
+```
+
+The dashboard provides:
+- Live feature progress tracking
+- Session activity visualization
+- Event log streaming
+- Cost and metrics display
+
 ## Customization
 
 ### Changing the Application
@@ -282,6 +403,16 @@ Edit `arcadiaforge/prompts/app_spec.txt` to specify a different application to b
 ### Adjusting Feature Count
 
 Edit `arcadiaforge/prompts/initializer_prompt.md` and change the "200 features" requirement to a smaller number for faster demos.
+
+### Configuring the Model
+
+The default Claude model (`claude-sonnet-4-5-20250929`) can be changed via:
+
+1. **Command line flag**: `--model claude-opus-4-20250514`
+2. **Environment variable**: `ARCADIA_MODEL=claude-opus-4-20250514`
+3. **Config file**: Create `arcadia_config.json` with `{"default_model": "claude-opus-4-20250514"}`
+
+Precedence order: command line > environment variable > config file > default.
 
 ### Configuring Budget Limits
 
@@ -305,7 +436,7 @@ Edit `arcadiaforge/prompts/platform_instructions.py` to modify platform-specific
 ## Troubleshooting
 
 **"Appears to hang on first run"**
-This is normal. The initializer agent is generating 200 detailed test cases, which takes significant time. Watch for `[Tool: ...]` output to confirm the agent is working.
+This is normal. The initializer agent is generating 200+ detailed test cases, which takes significant time. Watch for `[Tool: ...]` output to confirm the agent is working.
 
 **"Command blocked by security hook"**
 The agent tried to run a command not in the allowlist. This is the security system working as intended. If needed, add the command to the appropriate set in `arcadiaforge/security.py`:
@@ -341,6 +472,16 @@ chmod +x init.sh
 **"pkill/taskkill blocked"**
 Process killing is restricted to dev-related processes only (node, npm, npx, python, vite, next). To kill other processes, you'll need to do it manually outside the agent.
 
+**"Database locked"**
+If you see SQLite database lock errors, ensure only one instance of the agent is running against the same project directory.
+
+## Recovery
+
+- **Crash recovery:** Session state auto-saves for automatic recovery on restart
+- **Checkpoint rollback:** Use `checkpoint-cli` to rollback to a previous state
+- **Event reconstruction:** Query `.events.jsonl` for full session history
+- **Failure analysis:** Check `.failure_reports/` for automated analysis
+
 ## Cross-Platform Development
 
 This project automatically detects the operating system and adjusts:
@@ -353,6 +494,22 @@ The detection is handled by `platform_utils.py` which provides:
 - `detect_os()` - Returns `OSType.WINDOWS`, `OSType.MACOS`, or `OSType.LINUX`
 - `get_platform_info()` - Returns complete platform configuration
 - Various helper functions for generating platform-specific instructions
+
+## Dependencies
+
+### Python Requirements
+- `claude-code-sdk>=0.0.25` - Claude Agent SDK
+- `rich>=13.0.0` - Terminal formatting
+- `python-dotenv>=1.0.0` - Environment variables
+- `prompt_toolkit>=3.0.0` - Interactive terminal
+- `sqlalchemy>=2.0.0` - ORM for database
+- `aiosqlite>=0.19.0` - Async SQLite driver
+
+### System Requirements
+- Node.js v18+ (for Claude Code CLI and Puppeteer)
+- Python 3.10+
+- Git
+- Optional: Docker, PostgreSQL
 
 ## License
 

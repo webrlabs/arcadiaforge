@@ -1,7 +1,13 @@
+import asyncio
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from arcadiaforge.web.backend.api import router as api_router
 from arcadiaforge.web.backend.socket import router as socket_router
+
+if os.name == "nt":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 app = FastAPI(title="ArcadiaForge Web API")
 

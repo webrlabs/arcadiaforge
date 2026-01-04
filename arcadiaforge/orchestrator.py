@@ -190,8 +190,12 @@ class SessionOrchestrator:
         self.session_state_manager = SessionStateManager(self.project_dir)
         self._check_crash_recovery()
 
-        # Initialize live terminal if enabled
-        if self.enable_live_terminal:
+        # Initialize or register live terminal if enabled
+        if self.live_terminal:
+            set_live_terminal(self.live_terminal)
+            if isinstance(self.live_terminal, LiveTerminal):
+                print_info("Live terminal enabled - type /help for commands")
+        elif self.enable_live_terminal:
             self.live_terminal = LiveTerminal(
                 max_output_lines=100,
                 prompt_text="Feedback",
@@ -373,7 +377,10 @@ class SessionOrchestrator:
         # Run main loop with live terminal if enabled
         if self.live_terminal:
             async with self.live_terminal:
-                with patch_stdout():
+                if isinstance(self.live_terminal, LiveTerminal):
+                    with patch_stdout():
+                        await self._run_main_loop(is_first_run, is_update_run)
+                else:
                     await self._run_main_loop(is_first_run, is_update_run)
         else:
             await self._run_main_loop(is_first_run, is_update_run)

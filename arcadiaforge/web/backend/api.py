@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Body
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import aiosqlite
 
@@ -57,13 +58,13 @@ async def create_project(req: CreateProjectRequest):
     
     try:
         project_path.mkdir(parents=True)
-        (project_path / "app_spec.txt").write_text(req.app_spec)
+        (project_path / "app_spec.txt").write_text(req.app_spec, encoding="utf-8")
         return {"id": project_slug, "message": "Project created"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/projects/{project_id}/db/{table}")
-async def get_table_data(project_id: str, table: str, limit: int = 100, offset: int = 0):
+async def get_table_data(project_id: str, table: str, limit: int = 100, offset: int = 0, order: str = "asc"):
     """Generic endpoint to read any table from the project's SQLite DB."""
     db_path = GENERATIONS_DIR / project_id / ".arcadia" / "project.db"
     
@@ -79,11 +80,18 @@ async def get_table_data(project_id: str, table: str, limit: int = 100, offset: 
     if table not in allowed_tables:
         raise HTTPException(status_code=400, detail=f"Invalid table. Allowed: {', '.join(allowed_tables)}")
 
+    sort_order = order.lower()
+    if sort_order not in {"asc", "desc"}:
+        raise HTTPException(status_code=400, detail="Invalid order. Use 'asc' or 'desc'.")
+
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         try:
             # Safe because we validate table name against allowlist
-            cursor = await db.execute(f"SELECT * FROM {table} ORDER BY id ASC LIMIT ? OFFSET ?", (limit, offset))
+            cursor = await db.execute(
+                f"SELECT * FROM {table} ORDER BY id {sort_order.upper()} LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
         except Exception as e:
@@ -132,7 +140,7 @@ async def get_project_spec(project_id: str):
     spec_path = GENERATIONS_DIR / project_id / "app_spec.txt"
     if not spec_path.exists():
         return {"content": ""}
-    return {"content": spec_path.read_text()}
+    return {"content": spec_path.read_text(encoding="utf-8", errors="replace")}
 
 @router.post("/projects/{project_id}/spec")
 async def update_project_spec(project_id: str, req: UpdateSpecRequest):
@@ -143,7 +151,28 @@ async def update_project_spec(project_id: str, req: UpdateSpecRequest):
     
     spec_path = project_dir / "app_spec.txt"
     try:
-        spec_path.write_text(req.content)
+        spec_path.write_text(req.content, encoding="utf-8")
         return {"message": "Spec updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/projects/{project_id}/screenshots/{filename}")
+async def get_screenshot(project_id: str, filename: str):
+    """Serve a screenshot image from the project screenshots directory."""
+    screenshots_dir = (GENERATIONS_DIR / project_id / "screenshots").resolve()
+    file_path = (screenshots_dir / filename).resolve()
+
+    if not screenshots_dir.exists():
+        raise HTTPException(status_code=404, detail="Screenshots directory not found")
+
+    try:
+        if not str(file_path).startswith(str(screenshots_dir)):
+            raise HTTPException(status_code=400, detail="Invalid screenshot path")
+        if not file_path.is_file():
+            raise HTTPException(status_code=404, detail="Screenshot not found")
+        return FileResponse(file_path)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
