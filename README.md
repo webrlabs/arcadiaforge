@@ -1,4 +1,4 @@
-<img src="./arcadiaforge_icon.png" alt="ArcadiaForge icon" width="100"/>
+<img src="./arcadiaforge_icon.png" alt="ArcadiaForge icon" width="200"/>
 
 # ArcadiaForge
 
