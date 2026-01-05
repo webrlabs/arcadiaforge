@@ -418,7 +418,7 @@ def test_sensitive_but_allowed_commands():
         "head -1 /etc/passwd",
         "tail -1 /etc/passwd",
         "grep root /etc/passwd",
-        "curl -s http://localhost:8000/api/snippets/1",
+        "curl -s http://localhost:8678/api/snippets/1",
     ]
 
     windows_allowed = [

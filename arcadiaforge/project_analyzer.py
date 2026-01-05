@@ -562,8 +562,8 @@ async def analyze_project_with_agent(project_dir: Path, model: str = None) -> Op
     spec_content = ProjectAnalyzer(project_dir)._read_spec_text()
 
     # Truncate if too long (save tokens)
-    if len(spec_content) > 8000:
-        spec_content = spec_content[:8000] + "\n\n[... truncated for analysis ...]"
+    if len(spec_content) > 8678:
+        spec_content = spec_content[:8678] + "\n\n[... truncated for analysis ...]"
 
     prompt = TOOL_SELECTION_PROMPT.format(spec_content=spec_content)
 

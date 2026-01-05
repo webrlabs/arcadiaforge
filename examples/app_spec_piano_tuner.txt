@@ -249,7 +249,7 @@
   <settings>
     <audio>
       <device_selector>true</device_selector>
-      <sample_rate_default>48000</sample_rate_default>
+      <sample_rate_default>48678</sample_rate_default>
       <buffer_sizes>128,256,512,1024</buffer_sizes>
       <noise_gate>
         <enabled_default>true</enabled_default>

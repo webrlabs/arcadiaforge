@@ -404,11 +404,11 @@ Use these tools to manage verification screenshots as evidence for features.
 - `server_wait` - Wait for a server to become available (checks port or health URL)
   - Parameters: `port` or `url`, `timeout` (seconds, default 30)
 - `server_status` - Check which ports have servers running
-  - Parameters: `ports` (comma-separated, e.g., "3000,8000")
+  - Parameters: `ports` (comma-separated, e.g., "3000,8678")
 - `server_restart` - Stop and restart a server on a port with a new command
 
 **Recommended workflow for starting servers:**
-1. Use `server_status` with ports="3000,8000" to check current state
+1. Use `server_status` with ports="3000,8678" to check current state
 2. Use `server_stop_port` if ports are already in use
 3. Use `server_start` to start each server
 4. Use `server_wait` to confirm servers are ready before testing

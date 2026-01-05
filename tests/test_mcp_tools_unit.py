@@ -317,12 +317,12 @@ class TestProcessTracker:
             command="python test.py",
             session_id=1,
             name="test-process",
-            port=8000
+            port=8678
         )
 
         assert 12345 in tracker.processes
         assert tracker.processes[12345].name == "test-process"
-        assert tracker.processes[12345].port == 8000
+        assert tracker.processes[12345].port == 8678
 
         # Untrack
         tracker.untrack(12345)

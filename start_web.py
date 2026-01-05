@@ -61,7 +61,7 @@ def main():
         return
 
     print("\n[*] Servers launched!")
-    print("    Backend: http://localhost:8000/docs")
+    print("    Backend: http://localhost:8678/docs")
     print("    Frontend: http://localhost:5173")
 
     print("\nOpening browser in 3 seconds...")

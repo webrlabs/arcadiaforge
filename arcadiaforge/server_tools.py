@@ -100,7 +100,7 @@ def _find_process_on_port(port: int) -> Optional[dict]:
             )
 
             for line in result.stdout.split('\n'):
-                # Match lines like: TCP    0.0.0.0:8000    0.0.0.0:0    LISTENING    12345
+                # Match lines like: TCP    0.0.0.0:8678    0.0.0.0:0    LISTENING    12345
                 if f":{port}" in line and "LISTENING" in line:
                     parts = line.split()
                     if len(parts) >= 5:

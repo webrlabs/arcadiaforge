@@ -114,7 +114,7 @@ def cleanup_previous_processes(project_dir: Path, new_session_id: int) -> tuple[
 
 def _extract_port_from_command(command: str) -> Optional[int]:
     """Try to extract a port number from a command string."""
-    # Common patterns: --port 3000, -p 8000, :3000, PORT=3000
+    # Common patterns: --port 3000, -p 8678, :3000, PORT=3000
     patterns = [
         r'--port[=\s]+(\d+)',
         r'-p[=\s]+(\d+)',

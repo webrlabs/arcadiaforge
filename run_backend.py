@@ -3,6 +3,8 @@ import subprocess
 import os
 import platform
 
+PORT = 8678
+
 def check_dependencies():
     missing = []
     try:
@@ -27,7 +29,7 @@ def check_dependencies():
 
 if __name__ == "__main__":
     check_dependencies()
-    print("Starting ArcadiaForge Backend on http://localhost:8000")
+    print(f"Starting ArcadiaForge Backend on http://localhost:{PORT}")
     
     # Run uvicorn directly
     try:
@@ -44,7 +46,7 @@ if __name__ == "__main__":
             "--host",
             "0.0.0.0",
             "--port",
-            "8000",
+            f"{PORT}",
         ]
         if enable_reload and not is_windows:
             args.append("--reload")

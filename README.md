@@ -67,7 +67,6 @@ Generate an OAuth token for Claude Code:
 
 ```bash
 claude setup-token
-# Or: claude /login (interactive)
 ```
 
 Then create your environment file:
@@ -396,20 +395,6 @@ The application will typically be available at `http://localhost:3000` or simila
 | `--live-terminal` | Enable live terminal input during runs | Off |
 | `--verbose` | Verbose output (tool calls and reasoning) | Off |
 
-## Web Dashboard
-
-Start the real-time monitoring dashboard:
-
-```bash
-python -m arcadiaforge dashboard --project-dir ./my_project --port 8080
-```
-
-The dashboard provides:
-- Live feature progress tracking
-- Session activity visualization
-- Event log streaming
-- Cost and metrics display
-
 ## Web App (React + FastAPI)
 
 Launch the full web UI (project creation + per-project dashboards):
@@ -426,7 +411,7 @@ npm install
 npm run dev
 ```
 
-The UI runs on `http://localhost:5173` with the backend at `http://localhost:8000`.
+The UI runs on `http://localhost:5173` with the backend at `http://localhost:8678`.
 
 ## Customization
 

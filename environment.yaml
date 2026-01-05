@@ -12,7 +12,10 @@ dependencies:
   - uvicorn
   - websockets
   - python-multipart
+  - sqlalchemy
+  - prompt_toolkit
   - pip
   - pip:
       - claude-code-sdk
+      - anthropic
       - mcp-server-fetch

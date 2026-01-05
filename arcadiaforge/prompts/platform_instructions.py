@@ -105,25 +105,25 @@ def get_run_init_instructions() -> str:
 
 First, check which ports are in use:
 ```
-server_status with ports="3000,8000"
+server_status with ports="3000,8678"
 ```
 
 If ports are already in use by old servers, stop them:
 ```
 server_stop_port with port=3000
-server_stop_port with port=8000
+server_stop_port with port=8678
 ```
 
 Start servers using server_start (automatically tracks PIDs):
 ```
 server_start with command="npm run dev --prefix frontend", name="frontend", port=3000
-server_start with command="python -m uvicorn backend.app.main:app --port 8000", name="backend", port=8000
+server_start with command="python -m uvicorn backend.app.main:app --port 8678", name="backend", port=8678
 ```
 
 Wait for servers to be ready:
 ```
 server_wait with port=3000, timeout=30
-server_wait with port=8000, timeout=30
+server_wait with port=8678, timeout=30
 ```
 
 **Alternative: If init scripts exist, you can run them (but server tools are preferred):**
